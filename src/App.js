@@ -12,12 +12,11 @@ import FaceSelection from './components/FaceSelection';
 import AvailabilityPicker from './components/AvailabilityPicker';
 import OnboardingGuard from './components/OnboardingGuard';
 import Profile from './components/Profile';
-// import Chat from './components/Chat';
-
-// Import your other components here
-// import OnboardingForm from './components/OnboardingForm';
-// import FaceSelection from './components/FaceSelection';
-// import AvailabilityPicker from './components/AvailabilityPicker';
+import SpotifyCallback from './components/SpotifyCallback';
+import Navigation from './components/Navigation';
+import SendNote from './components/SendNote';
+import DatePlanning from './components/DatePlanning';
+import Connections from './components/Connections';
 // import Chat from './components/Chat';
 
 function App() {
@@ -35,78 +34,138 @@ function App() {
             },
           }}
         />
-        <Routes>
-          {/* Public routes */}
-          <Route path="/signin" element={<SignIn />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
+        <div className="min-h-screen bg-gray-50">
+          <Routes>
+            {/* Public routes */}
+            <Route path="/signin" element={<SignIn />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="/spotify-callback" element={<SpotifyCallback />} />
+            
+            {/* Protected routes with Navigation */}
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <OnboardingGuard>
+                    <>
+                      <Navigation />
+                      <Profile />
+                    </>
+                  </OnboardingGuard>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/preferences"
+              element={
+                <ProtectedRoute>
+                  <OnboardingGuard>
+                    <>
+                      <Navigation />
+                      <Profile activeTab="preferences" />
+                    </>
+                  </OnboardingGuard>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/onboarding"
+              element={
+                <ProtectedRoute>
+                  <OnboardingForm />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/face-selection"
+              element={
+                <ProtectedRoute>
+                  <FaceSelection />
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/availability"
+              element={
+                <ProtectedRoute>
+                  <OnboardingGuard>
+                    <>
+                      <Navigation />
+                      <AvailabilityPicker />
+                    </>
+                  </OnboardingGuard>
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/matches"
+              element={
+                <ProtectedRoute>
+                  <OnboardingGuard>
+                    <>
+                      <Navigation />
+                      <Matches />
+                    </>
+                  </OnboardingGuard>
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route
+              path="/chat/:matchId"
+              element={
+                <ProtectedRoute>
+                  <OnboardingGuard>
+                    {/* <Chat /> */}
+                    <div>Chat (Coming Soon)</div>
+                  </OnboardingGuard>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/send-note/:matchId"
+              element={
+                <ProtectedRoute>
+                  <OnboardingGuard>
+                    <Navigation />
+                    <SendNote />
+                  </OnboardingGuard>
+                </ProtectedRoute>
+              }
+            />
+            
+            <Route path="/date-planning/:requestId" element={<DatePlanning />} />
+            
+            <Route
+              path="/connections"
+              element={
+                <ProtectedRoute>
+                  <OnboardingGuard>
+                    <>
+                      <Navigation />
+                      <Connections />
+                    </>
+                  </OnboardingGuard>
+                </ProtectedRoute>
+              }
+            />
+            
+            {/* Redirect root to matches */}
+            <Route path="/" element={<Navigate to="/matches" replace />} />
+            
+            {/* Catch all route - redirect to signin */}
+            <Route path="*" element={<Navigate to="/signin" replace />} />
+          </Routes>
           
-          {/* Protected routes */}
-          <Route
-            path="/onboarding"
-            element={
-              <ProtectedRoute>
-                <OnboardingForm />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/face-selection"
-            element={
-              <ProtectedRoute>
-                <FaceSelection />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/availability"
-            element={
-              <ProtectedRoute>
-                <AvailabilityPicker />
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/matches"
-            element={
-              <ProtectedRoute>
-                <OnboardingGuard>
-                  <Matches />
-                </OnboardingGuard>
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/chat/:matchId"
-            element={
-              <ProtectedRoute>
-                <OnboardingGuard>
-                  {/* <Chat /> */}
-                  <div>Chat (Coming Soon)</div>
-                </OnboardingGuard>
-              </ProtectedRoute>
-            }
-          />
-          
-          {/* Redirect root to signin if not authenticated, or to matches if authenticated */}
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Navigate to="/matches" replace />
-              </ProtectedRoute>
-            }
-          />
-          
-          {/* Catch all route - redirect to signin */}
-          <Route path="*" element={<Navigate to="/signin" replace />} />
-        </Routes>
-        
-        {/* DevTools for database seeding (only visible in development) */}
-        <DevTools />
+          {/* DevTools for database seeding (only visible in development) */}
+          <DevTools />
+        </div>
       </AuthProvider>
     </Router>
   );

@@ -1,345 +1,415 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '../utils/firebase';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../contexts/AuthContext';
+import { db } from '../utils/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
+import { motion, AnimatePresence } from 'framer-motion';
+
+const GENDER_OPTIONS = ['woman', 'man', 'non-binary', 'other'];
+const ACTIVITY_OPTIONS = [
+  { id: 'coffee', label: 'Coffee & Tea', icon: '☕' },
+  { id: 'walks', label: 'Outdoor Walks', icon: '🚶' },
+  { id: 'museums', label: 'Museums & Galleries', icon: '🏛️' },
+  { id: 'music', label: 'Live Music', icon: '🎵' },
+  { id: 'dining', label: 'Food & Dining', icon: '🍽️' },
+  { id: 'books', label: 'Bookstores', icon: '📚' },
+  { id: 'fitness', label: 'Fitness & Wellness', icon: '💪' },
+  { id: 'workshops', label: 'Creative Workshops', icon: '🎨' }
+];
+
+const STEPS = [
+  'basics',
+  'preferences',
+  'activities',
+  'emergency',
+  'spotify',
+  'availability'
+];
 
 export default function OnboardingForm() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState({
-    name: '',
-    age: '',
-    gender: '',
-    phone: '',
-    location: '',
-    comfortPreferences: {
-      venue: 'public',
-      activity: 'casual',
-      time: 'daytime'
+    basicInfo: {
+      name: '',
+      age: '',
+      gender: '',
+      phone: '',
+      location: ''
     },
-    activityPreferences: [],
-    emergencyContact: {
+    preferences: {
+      venue: 'public',
+      activityLevel: 'casual',
+      timePreference: 'daytime'
+    },
+    activities: [],
+    emergency: {
       name: '',
       phone: '',
       relationship: ''
+    },
+    spotifyLink: '',
+    availability: {
+      monday: [],
+      tuesday: [],
+      wednesday: [],
+      thursday: [],
+      friday: [],
+      saturday: [],
+      sunday: []
     }
   });
 
-  const activityOptions = [
-    'Coffee & Tea',
-    'Outdoor Walks',
-    'Museums & Galleries',
-    'Live Music',
-    'Food & Dining',
-    'Bookstores',
-    'Fitness & Wellness',
-    'Creative Workshops'
-  ];
-
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    if (name.includes('.')) {
-      const [parent, child] = name.split('.');
-      setFormData(prev => ({
-        ...prev,
-        [parent]: {
-          ...prev[parent],
-          [child]: value
-        }
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
-    }
-  };
-
-  const handleActivityToggle = (activity) => {
+  const handleInputChange = (section, field, value) => {
     setFormData(prev => ({
       ...prev,
-      activityPreferences: prev.activityPreferences.includes(activity)
-        ? prev.activityPreferences.filter(a => a !== activity)
-        : [...prev.activityPreferences, activity]
+      [section]: {
+        ...prev[section],
+        [field]: value
+      }
     }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    // Validate required fields
-    if (!formData.name || !formData.age || !formData.gender || !formData.phone || !formData.location) {
+  const handleActivityToggle = (activityId) => {
+    setFormData(prev => ({
+      ...prev,
+      activities: prev.activities.includes(activityId)
+        ? prev.activities.filter(id => id !== activityId)
+        : [...prev.activities, activityId]
+    }));
+  };
+
+  const handleTimeSlotToggle = (day, time) => {
+    setFormData(prev => ({
+      ...prev,
+      availability: {
+        ...prev.availability,
+        [day]: prev.availability[day].includes(time)
+          ? prev.availability[day].filter(t => t !== time)
+          : [...prev.availability[day], time]
+      }
+    }));
+  };
+
+  const validateStep = () => {
+    switch (STEPS[currentStep]) {
+      case 'basics':
+        return (
+          formData.basicInfo.name &&
+          formData.basicInfo.age &&
+          formData.basicInfo.gender &&
+          formData.basicInfo.location
+        );
+      case 'activities':
+        return formData.activities.length >= 2;
+      default:
+        return true;
+    }
+  };
+
+  const handleNext = () => {
+    if (!validateStep()) {
       toast.error('Please fill in all required fields');
       return;
     }
-
-    // Validate activities
-    if (formData.activityPreferences.length < 2) {
-      toast.error('Please select at least 2 activities you enjoy');
-      return;
+    if (currentStep < STEPS.length - 1) {
+      setCurrentStep(prev => prev + 1);
+    } else {
+      handleSubmit();
     }
+  };
 
-    setLoading(true);
+  const handleBack = () => {
+    if (currentStep > 0) {
+      setCurrentStep(prev => prev - 1);
+    }
+  };
+
+  const handleSubmit = async () => {
     try {
-      // Save to Firestore
-      const userRef = doc(db, 'users', currentUser.uid);
-      await updateDoc(userRef, {
-        basicInfo: {
-          name: formData.name,
-          age: formData.age,
-          gender: formData.gender,
-          phone: formData.phone,
-          location: formData.location,
-          comfortLevel: formData.comfortPreferences,
-          activities: formData.activityPreferences,
-          emergencyContact: formData.emergencyContact
-        },
-        onboardingStep: 'face-selection'
+      await setDoc(doc(db, 'users', currentUser.uid), {
+        ...formData,
+        createdAt: new Date(),
+        updatedAt: new Date()
       });
-
-      toast.success('Profile saved successfully!');
+      toast.success('Profile created successfully!');
       navigate('/face-selection');
     } catch (error) {
       console.error('Error saving profile:', error);
       toast.error('Failed to save profile');
-    } finally {
-      setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-rose-50 py-8">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-serif text-gray-900">Welcome to Your Journey</h1>
-          <p className="mt-2 text-sm text-rose-600 italic">
-            Let's create your thoughtful dating profile
-          </p>
+  const renderBasicsStep = () => (
+    <div className="space-y-4">
+      <input
+        type="text"
+        placeholder="Name"
+        value={formData.basicInfo.name}
+        onChange={(e) => handleInputChange('basicInfo', 'name', e.target.value)}
+        className="w-full p-4 rounded-lg border border-gray-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-gray-900 placeholder-gray-500 bg-white"
+      />
+      <input
+        type="number"
+        placeholder="Age"
+        value={formData.basicInfo.age}
+        onChange={(e) => handleInputChange('basicInfo', 'age', e.target.value)}
+        className="w-full p-4 rounded-lg border border-gray-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-gray-900 placeholder-gray-500 bg-white"
+      />
+      <select
+        value={formData.basicInfo.gender}
+        onChange={(e) => handleInputChange('basicInfo', 'gender', e.target.value)}
+        className="w-full p-4 rounded-lg border border-gray-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-gray-900 bg-white appearance-none"
+      >
+        <option value="">Select gender...</option>
+        {GENDER_OPTIONS.map(gender => (
+          <option key={gender} value={gender}>
+            {gender.charAt(0).toUpperCase() + gender.slice(1)}
+          </option>
+        ))}
+      </select>
+      <input
+        type="text"
+        placeholder="Location (City)"
+        value={formData.basicInfo.location}
+        onChange={(e) => handleInputChange('basicInfo', 'location', e.target.value)}
+        className="w-full p-4 rounded-lg border border-gray-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-gray-900 placeholder-gray-500 bg-white"
+      />
+    </div>
+  );
+
+  const renderPreferencesStep = () => (
+    <div className="space-y-6">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-3">Preferred Venue</label>
+        <div className="grid grid-cols-1 gap-3">
+          {['public', 'any'].map(venue => (
+            <button
+              key={venue}
+              onClick={() => handleInputChange('preferences', 'venue', venue)}
+              className={`p-4 rounded-lg border ${
+                formData.preferences.venue === venue
+                  ? 'border-rose-500 bg-rose-50 text-rose-600'
+                  : 'border-gray-200 bg-white text-gray-900 hover:border-gray-300'
+              } transition-colors duration-200 text-center`}
+            >
+              {venue === 'public' ? 'Public Places Only' : 'Any Location'}
+            </button>
+          ))}
         </div>
+      </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8 bg-white p-6 rounded-lg shadow-sm">
-          {/* Basic Information */}
-          <div className="space-y-6">
-            <h2 className="text-xl font-serif text-gray-900">About You</h2>
-            
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                  required
-                />
-              </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-3">Activity Level</label>
+        <div className="grid grid-cols-1 gap-3">
+          {['casual', 'active'].map(level => (
+            <button
+              key={level}
+              onClick={() => handleInputChange('preferences', 'activityLevel', level)}
+              className={`p-4 rounded-lg border ${
+                formData.preferences.activityLevel === level
+                  ? 'border-rose-500 bg-rose-50 text-rose-600'
+                  : 'border-gray-200 bg-white text-gray-900 hover:border-gray-300'
+              } transition-colors duration-200 text-center`}
+            >
+              {level === 'casual' ? 'Casual & Relaxed' : 'Active & Adventurous'}
+            </button>
+          ))}
+        </div>
+      </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Age
-                </label>
-                <input
-                  type="number"
-                  name="age"
-                  min="18"
-                  max="120"
-                  value={formData.age}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                  required
-                />
-              </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-3">Time Preference</label>
+        <div className="grid grid-cols-1 gap-3">
+          {['daytime', 'any'].map(time => (
+            <button
+              key={time}
+              onClick={() => handleInputChange('preferences', 'timePreference', time)}
+              className={`p-4 rounded-lg border ${
+                formData.preferences.timePreference === time
+                  ? 'border-rose-500 bg-rose-50 text-rose-600'
+                  : 'border-gray-200 bg-white text-gray-900 hover:border-gray-300'
+              } transition-colors duration-200 text-center`}
+            >
+              {time === 'daytime' ? 'Daytime Only' : 'Any Time'}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Gender
-                </label>
-                <select
-                  name="gender"
-                  value={formData.gender}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                  required
-                >
-                  <option value="">Select gender...</option>
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                  <option value="non-binary">Non-binary</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
+  const renderActivitiesStep = () => (
+    <div>
+      <p className="text-sm text-gray-500 mb-4">Select activities you enjoy (choose at least 2)</p>
+      <div className="grid grid-cols-2 gap-3">
+        {ACTIVITY_OPTIONS.map(activity => (
+          <button
+            key={activity.id}
+            onClick={() => handleActivityToggle(activity.id)}
+            className={`p-4 rounded-lg border ${
+              formData.activities.includes(activity.id)
+                ? 'border-rose-500 bg-rose-50 text-rose-600'
+                : 'border-gray-200 bg-white text-gray-900 hover:border-gray-300'
+            } transition-colors duration-200 text-center`}
+          >
+            <span className="text-2xl block mb-2">{activity.icon}</span>
+            <span className="text-sm">{activity.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                  required
-                />
-              </div>
+  const renderEmergencyStep = () => (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500 mb-4">For your safety and peace of mind (Optional)</p>
+      <input
+        type="text"
+        placeholder="Contact Name"
+        value={formData.emergency.name}
+        onChange={(e) => handleInputChange('emergency', 'name', e.target.value)}
+        className="w-full p-4 rounded-lg border border-gray-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-gray-900 placeholder-gray-500"
+      />
+      <input
+        type="tel"
+        placeholder="Contact Phone"
+        value={formData.emergency.phone}
+        onChange={(e) => handleInputChange('emergency', 'phone', e.target.value)}
+        className="w-full p-4 rounded-lg border border-gray-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-gray-900 placeholder-gray-500"
+      />
+      <input
+        type="text"
+        placeholder="Relationship"
+        value={formData.emergency.relationship}
+        onChange={(e) => handleInputChange('emergency', 'relationship', e.target.value)}
+        className="w-full p-4 rounded-lg border border-gray-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-gray-900 placeholder-gray-500"
+      />
+    </div>
+  );
 
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Location (City)
-                </label>
-                <input
-                  type="text"
-                  name="location"
-                  value={formData.location}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                  required
-                />
-              </div>
-            </div>
-          </div>
+  const renderSpotifyStep = () => (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500 mb-4">Share your music taste with potential matches (Optional)</p>
+      <input
+        type="url"
+        placeholder="https://open.spotify.com/user/..."
+        value={formData.spotifyLink}
+        onChange={(e) => setFormData(prev => ({ ...prev, spotifyLink: e.target.value }))}
+        className="w-full p-4 rounded-lg border border-gray-200 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-gray-900 placeholder-gray-500"
+      />
+      <a
+        href="https://open.spotify.com"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block text-center text-rose-600 hover:text-rose-700 font-medium"
+      >
+        Open Spotify
+      </a>
+    </div>
+  );
 
-          {/* Comfort Preferences */}
-          <div className="space-y-6">
-            <h2 className="text-xl font-serif text-gray-900">Comfort Preferences</h2>
-            
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Preferred Venue
-                </label>
-                <select
-                  name="comfortPreferences.venue"
-                  value={formData.comfortPreferences.venue}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                >
-                  <option value="public">Public Places Only</option>
-                  <option value="semi-private">Semi-Private (e.g., Reserved Areas)</option>
-                  <option value="either">Either is Fine</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Activity Level
-                </label>
-                <select
-                  name="comfortPreferences.activity"
-                  value={formData.comfortPreferences.activity}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                >
-                  <option value="casual">Casual & Relaxed</option>
-                  <option value="active">Active & Engaging</option>
-                  <option value="mixed">Mix of Both</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Time Preference
-                </label>
-                <select
-                  name="comfortPreferences.time"
-                  value={formData.comfortPreferences.time}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                >
-                  <option value="daytime">Daytime Only</option>
-                  <option value="evening">Evening Preferred</option>
-                  <option value="flexible">Flexible</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Activity Preferences */}
-          <div className="space-y-6">
-            <h2 className="text-xl font-serif text-gray-900">Activity Preferences</h2>
-            <p className="text-sm text-gray-500">Select activities you enjoy (choose at least 2)</p>
-            
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {activityOptions.map((activity) => (
+  const renderAvailabilityStep = () => (
+    <div className="space-y-6">
+      <p className="text-sm text-gray-500 mb-4">Select your typical availability for dates</p>
+      <div className="space-y-4">
+        {Object.keys(formData.availability).map(day => (
+          <div key={day} className="border border-gray-200 rounded-lg p-4">
+            <h3 className="font-medium capitalize mb-3">{day}</h3>
+            <div className="grid grid-cols-3 gap-2">
+              {['Morning', 'Afternoon', 'Evening'].map(timeSlot => (
                 <button
-                  key={activity}
-                  type="button"
-                  onClick={() => handleActivityToggle(activity)}
-                  className={`p-4 text-left rounded-lg border ${
-                    formData.activityPreferences.includes(activity)
-                      ? 'border-rose-500 bg-rose-50 text-rose-700'
-                      : 'border-gray-200 hover:border-rose-200 hover:bg-rose-50'
-                  }`}
+                  key={`${day}-${timeSlot}`}
+                  onClick={() => handleTimeSlotToggle(day, timeSlot.toLowerCase())}
+                  className={`p-2 text-sm rounded-lg ${
+                    formData.availability[day].includes(timeSlot.toLowerCase())
+                      ? 'bg-rose-500 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  } transition-colors duration-200`}
                 >
-                  {activity}
+                  {timeSlot}
                 </button>
               ))}
             </div>
           </div>
+        ))}
+      </div>
+    </div>
+  );
 
-          {/* Emergency Contact */}
-          <div className="space-y-6">
-            <h2 className="text-xl font-serif text-gray-900">Emergency Contact (Optional)</h2>
-            <p className="text-sm text-gray-500">For your safety and peace of mind</p>
-            
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Contact Name
-                </label>
-                <input
-                  type="text"
-                  name="emergencyContact.name"
-                  value={formData.emergencyContact.name}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                />
-              </div>
+  const stepComponents = {
+    basics: renderBasicsStep,
+    preferences: renderPreferencesStep,
+    activities: renderActivitiesStep,
+    emergency: renderEmergencyStep,
+    spotify: renderSpotifyStep,
+    availability: renderAvailabilityStep
+  };
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Contact Phone
-                </label>
-                <input
-                  type="tel"
-                  name="emergencyContact.phone"
-                  value={formData.emergencyContact.phone}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                />
-              </div>
+  const stepTitles = {
+    basics: 'About You',
+    preferences: 'Your Preferences',
+    activities: 'Activities You Enjoy',
+    emergency: 'Emergency Contact',
+    spotify: 'Connect Spotify',
+    availability: 'Your Availability'
+  };
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  Relationship
-                </label>
-                <input
-                  type="text"
-                  name="emergencyContact.relationship"
-                  value={formData.emergencyContact.relationship}
-                  onChange={handleInputChange}
-                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-                />
-              </div>
-            </div>
+  return (
+    <div className="min-h-screen bg-white py-6 px-4">
+      <div className="max-w-md mx-auto">
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-gray-900">Welcome to Your Journey</h1>
+          <p className="text-gray-600">Let's create your thoughtful dating profile</p>
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-8">
+          <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-rose-500 transition-all duration-300 ease-out"
+              style={{ width: `${((currentStep + 1) / STEPS.length) * 100}%` }}
+            />
           </div>
-
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={loading}
-              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 disabled:opacity-50"
-            >
-              {loading ? 'Saving...' : 'Continue to Face Selection'}
-            </button>
+          <div className="mt-2 text-sm text-gray-500 text-center">
+            Step {currentStep + 1} of {STEPS.length}
           </div>
-        </form>
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentStep}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2 }}
+            className="bg-white rounded-xl shadow-sm p-6 border border-gray-100"
+          >
+            <h2 className="text-xl font-semibold text-gray-900 mb-6">{stepTitles[STEPS[currentStep]]}</h2>
+            {stepComponents[STEPS[currentStep]]()}
+          </motion.div>
+        </AnimatePresence>
+
+        <div className="mt-6 flex justify-between">
+          <button
+            onClick={handleBack}
+            className={`px-6 py-2 rounded-lg ${
+              currentStep === 0
+                ? 'invisible'
+                : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+            } transition-colors duration-200`}
+          >
+            Back
+          </button>
+          <button
+            onClick={handleNext}
+            className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors duration-200"
+          >
+            {currentStep === STEPS.length - 1 ? 'Complete' : 'Next'}
+          </button>
+        </div>
       </div>
     </div>
   );

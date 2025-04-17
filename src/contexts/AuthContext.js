@@ -7,6 +7,8 @@ import {
   getAuth
 } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '../utils/firebase';
 
 const AuthContext = createContext();
 
@@ -30,12 +32,24 @@ export function AuthProvider({ children }) {
       const result = await signInWithPopup(auth, googleProvider);
       console.log('Google sign-in successful');
       
-      // If this is a new user, redirect to onboarding
-      if (result.additionalUserInfo?.isNewUser) {
+      // Get user document from Firestore
+      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+      
+      // Define the navigation flow based on user state
+      if (!userDoc.exists()) {
+        // New user - start with basic profile
         navigate('/onboarding');
       } else {
-        navigate('/dashboard');
+        const userData = userDoc.data();
+        if (!userData.basicProfile) {
+          navigate('/onboarding');
+        } else if (!userData.photos) {
+          navigate('/photos');
+        } else {
+          navigate('/matches');
+        }
       }
+      
       return result;
     } catch (error) {
       console.error('Google sign in error:', error);

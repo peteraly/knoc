@@ -1,451 +1,346 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../utils/firebase';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import { motion, AnimatePresence } from 'framer-motion';
+import { collection, query, where, getDocs, doc, getDoc, addDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import SeedDatabaseButton from './SeedDatabaseButton';
 
 export default function Matches() {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedMatch, setSelectedMatch] = useState(null);
-  const [showNoteModal, setShowNoteModal] = useState(false);
-  const [noteText, setNoteText] = useState('');
-  const [dateStep, setDateStep] = useState(0);
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
 
-  // Enhanced date suggestions with more categories and options
-  const dateSuggestions = {
-    coffee: ['Local Coffee House', 'Artisan Cafe', 'Book & Brew', 'Garden Terrace Cafe', 'Vintage Tea Room'],
-    outdoor: ['Botanical Gardens', 'Riverside Walk', 'City Park', 'Sunset Beach', 'Mountain Trail', 'Local Farmers Market'],
-    cultural: ['Art Gallery', 'History Museum', 'Cultural Center', 'Theater Performance', 'Live Music Venue', 'Poetry Reading'],
-    activity: ['Pottery Workshop', 'Cooking Class', 'Paint & Sip', 'Dance Lesson', 'Wine Tasting', 'Flower Arranging'],
-    dining: ['Farm-to-Table Restaurant', 'Rooftop Lounge', 'Hidden Gem Bistro', 'Waterfront Dining', 'Cozy Italian Place'],
-    adventure: ['Rock Climbing Gym', 'Kayaking', 'Bike Tour', 'Escape Room', 'Mini Golf']
-  };
-
-  // Date planning steps
-  const planningSteps = [
-    { title: 'Choose Category', description: 'What kind of experience would you like to share?' },
-    { title: 'Select Venue', description: 'Pick a special place for your date' },
-    { title: 'Pick Time', description: 'Choose a day and time that works for both' },
-    { title: 'Add Personal Touch', description: 'Write a note to make it special' }
-  ];
+  // Check authentication on mount
+  useEffect(() => {
+    if (!currentUser) {
+      navigate('/signin', { state: { from: '/matches' } });
+      return;
+    }
+  }, [currentUser, navigate]);
 
   useEffect(() => {
-    async function fetchMatches() {
-      if (!currentUser) {
+    const fetchMatches = async () => {
+      if (!currentUser) return;
+
+      try {
+        setLoading(true);
+        setError('');
+
+        // Get current user's data for filtering
+        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        if (!userDoc.exists()) {
+          setError('Please complete your profile first');
+          navigate('/onboarding');
+          return;
+        }
+
+        const userData = userDoc.data();
+        
+        // Check if user has completed onboarding
+        if (!userData.onboardingComplete) {
+          setError('Please complete your profile first');
+          navigate('/onboarding');
+          return;
+        }
+
+        // First, fetch all date requests involving the current user
+        const sentRequestsQuery = query(
+          collection(db, 'dateRequests'),
+          where('senderId', '==', currentUser.uid)
+        );
+        const receivedRequestsQuery = query(
+          collection(db, 'dateRequests'),
+          where('recipientId', '==', currentUser.uid)
+        );
+
+        const [sentSnap, receivedSnap] = await Promise.all([
+          getDocs(sentRequestsQuery),
+          getDocs(receivedRequestsQuery)
+        ]);
+
+        // Create a Set of user IDs that should be excluded
+        const excludeUserIds = new Set();
+        sentSnap.docs.forEach(doc => excludeUserIds.add(doc.data().recipientId));
+        receivedSnap.docs.forEach(doc => excludeUserIds.add(doc.data().senderId));
+
+        // Get user's gender and preferences
+        const userGender = userData.basicInfo?.gender;
+        const interestedIn = userData.preferences?.interestedIn || ['woman', 'man', 'non-binary', 'other'];
+        
+        // Fetch all users
+        const usersQuery = query(collection(db, 'users'));
+        const usersSnap = await getDocs(usersQuery);
+        
+        const filteredMatches = [];
+
+        for (const doc of usersSnap.docs) {
+          const matchData = doc.data();
+          const matchId = doc.id;
+
+          // Skip if user is in exclude list or is the current user
+          if (excludeUserIds.has(matchId) || matchId === currentUser.uid) {
+            continue;
+          }
+
+          // Skip if user hasn't completed onboarding
+          if (!matchData.onboardingComplete) {
+            continue;
+          }
+
+          const matchGender = matchData.basicInfo?.gender;
+          const matchPreferences = matchData.preferences?.interestedIn || ['woman', 'man', 'non-binary', 'other'];
+
+          // Skip if gender preferences don't match
+          if (!interestedIn.includes(matchGender) || !matchPreferences.includes(userGender)) {
+            continue;
+          }
+
+          // Check if match has basic required fields
+          if (!matchData.basicInfo?.name || !matchData.basicInfo?.age || !matchData.basicInfo?.location) {
+            continue;
+          }
+
+          filteredMatches.push({
+            id: matchId,
+            name: matchData.basicInfo.name,
+            age: matchData.basicInfo.age,
+            location: matchData.basicInfo.location,
+            bio: matchData.basicInfo?.bio,
+            photoURL: matchData.basicInfo?.photoURL,
+            activities: matchData.activities || [],
+            spotifyLink: matchData.spotifyLink
+          });
+        }
+
+        setMatches(filteredMatches);
+        setError('');
+      } catch (error) {
+        console.error('Error fetching matches:', error);
+        setError('Failed to load matches. Please try again.');
+      } finally {
         setLoading(false);
+      }
+    };
+
+    fetchMatches();
+  }, [currentUser, navigate]);
+
+  const handleSendNote = (matchId) => {
+    if (!currentUser) {
+      toast.error('Please log in to send notes');
+      navigate('/login', { state: { from: `/send-note/${matchId}` } });
+      return;
+    }
+
+    // Navigate to the note sending page
+    navigate(`/send-note/${matchId}`, { 
+      state: { 
+        matchId,
+        returnPath: '/matches'
+      }
+    });
+  };
+
+  const handlePlanDate = async (matchId) => {
+    if (!currentUser) {
+      navigate('/signin', { state: { from: '/matches' } });
+      return;
+    }
+
+    try {
+      // Get current user's data
+      const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+      if (!userDoc.exists()) {
+        navigate('/onboarding');
         return;
       }
 
-      try {
-        console.log('Fetching matches for user:', currentUser.uid);
-        const matchesQuery = query(
-          collection(db, 'matches'),
-          where('users', 'array-contains', currentUser.uid)
-        );
-
-        const matchSnapshot = await getDocs(matchesQuery);
-        console.log('Found matches:', matchSnapshot.size);
-        const matchesData = [];
-
-        for (const matchDoc of matchSnapshot.docs) {
-          const matchData = matchDoc.data();
-          const otherUserId = matchData.users.find(id => id !== currentUser.uid);
-          
-          const userDocRef = doc(db, 'users', otherUserId);
-          const userDocSnap = await getDoc(userDocRef);
-          
-          if (userDocSnap.exists()) {
-            const userData = userDocSnap.data();
-            console.log('Found matched user:', userData.name);
-            matchesData.push({
-              id: matchDoc.id,
-              ...matchData,
-              matchedUser: {
-                id: otherUserId,
-                name: userData.name,
-                photoURL: userData.photoURL,
-                title: userData.title,
-                company: userData.company,
-                interests: userData.interests || [],
-                comfortPreferences: userData.comfortPreferences || {
-                  venue: 'public',
-                  activity: 'casual',
-                  time: 'daytime'
-                }
-              }
-            });
-          }
-        }
-
-        setMatches(matchesData);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching matches:', error);
-        setError('Unable to load your matches at the moment.');
-        setLoading(false);
+      const userData = userDoc.data();
+      
+      // Check if basic profile info is complete
+      if (!userData?.basicInfo?.name || !userData?.basicInfo?.photoURL) {
+        navigate('/profile');
+        return;
       }
+
+      // Get current user's availability status
+      const hasAvailability = userData?.availability && Object.keys(userData.availability).length > 0;
+
+      // Find the match
+      const match = matches.find(m => m.id === matchId);
+      if (!match) {
+        toast.error("Match not found");
+        return;
+      }
+
+      // If user hasn't set availability, redirect to availability page
+      if (!hasAvailability) {
+        navigate('/schedule');
+        return;
+      }
+
+      // Check if recipient exists
+      const recipientDoc = await getDoc(doc(db, 'users', matchId));
+      if (!recipientDoc.exists()) {
+        toast.error("Recipient not found");
+        return;
+      }
+
+      // Create a date request
+      const dateRequest = {
+        senderId: currentUser.uid,
+        recipientId: matchId,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        type: 'date_request',
+        senderName: userData.basicInfo.name,
+        senderPhoto: userData.basicInfo.photoURL,
+        matchData: {
+          name: match.name,
+          photo: match.photoURL,
+          location: match.location
+        }
+      };
+
+      const dateRequestRef = await addDoc(collection(db, 'dateRequests'), dateRequest);
+      
+      // Update the recipient's user document with the latest date request
+      await updateDoc(doc(db, 'users', matchId), {
+        latestDateRequest: {
+          requestId: dateRequestRef.id,
+          status: 'pending',
+          updatedAt: serverTimestamp()
+        }
+      });
+
+      // Remove the match from the local state
+      setMatches(prevMatches => prevMatches.filter(m => m.id !== matchId));
+
+      toast.success("Date request sent! We'll notify you when they respond.");
+
+    } catch (error) {
+      console.error('Error in handlePlanDate:', error);
+      toast.error('Failed to send date request. Please try again.');
     }
-
-    fetchMatches();
-  }, [currentUser]);
-
-  const handleDateSuggestion = (match) => {
-    setSelectedMatch(match);
-    setDateStep(0);
   };
 
-  const handleSendNote = (match) => {
-    setSelectedMatch(match);
-    setShowNoteModal(true);
-  };
-
-  const submitNote = async () => {
-    // TODO: Implement note sending logic
-    setShowNoteModal(false);
-    setNoteText('');
-  };
+  if (!currentUser) {
+    return null; // Don't render anything if not authenticated
+  }
 
   if (loading) {
     return (
-      <motion.div 
-        initial={{ opacity: 0 }} 
-        animate={{ opacity: 1 }} 
-        className="min-h-screen bg-rose-50 py-8"
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-rose-400"></div>
-            <motion.p 
-              initial={{ y: 20 }}
-              animate={{ y: 0 }}
-              className="text-rose-600 italic"
-            >
-              Finding your perfect match...
-            </motion.p>
-          </div>
-        </div>
-      </motion.div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500"></div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-rose-50 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="bg-white rounded-lg shadow-sm p-6 border border-rose-100">
-            <div className="flex items-center text-rose-600">
-              <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <p className="text-sm">{error}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (matches.length === 0) {
-    return (
-      <div className="min-h-screen bg-rose-50 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center space-y-4">
-            <h3 className="text-2xl font-serif text-gray-900">Your Journey Begins</h3>
-            <p className="text-rose-600 italic">
-              We're carefully curating your perfect match...
-            </p>
-            <p className="text-sm text-gray-600 max-w-md mx-auto">
-              While you wait, why not take a moment to update your comfort preferences or browse our suggested date locations?
-            </p>
-          </div>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-red-500">{error}</p>
       </div>
     );
   }
 
   return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="min-h-screen bg-rose-50 py-8"
-    >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div 
-          initial={{ y: -20 }}
-          animate={{ y: 0 }}
-          className="text-center mb-12"
-        >
-          <h1 className="text-3xl font-serif text-gray-900">Your Curated Matches</h1>
-          <p className="mt-2 text-sm text-rose-600 italic">
-            Each connection is unique, take your time to explore
-          </p>
-        </motion.div>
-        
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-          <AnimatePresence>
-            {matches.map((match, index) => (
-              <motion.div
-                key={match.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ delay: index * 0.1 }}
-                className="bg-white rounded-lg shadow-sm overflow-hidden border border-rose-100 transform transition hover:shadow-md hover:-translate-y-1"
-              >
-                <div className="px-6 py-5">
-                  <div className="flex items-center mb-4">
-                    <img
-                      className="h-16 w-16 rounded-full border-2 border-rose-100"
-                      src={match.matchedUser.photoURL || 'https://via.placeholder.com/100'}
-                      alt={match.matchedUser.name}
-                    />
-                    <div className="ml-4">
-                      <h3 className="text-xl font-serif text-gray-900">
-                        {match.matchedUser.name}
-                      </h3>
-                      <p className="text-sm text-gray-600">
-                        {match.matchedUser.title} at {match.matchedUser.company}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    {match.matchedUser.interests?.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-900">Shared Interests</h4>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {match.matchedUser.interests.map((interest, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-100 text-rose-800"
-                            >
-                              {interest}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-900">Comfort Preferences</h4>
-                      <div className="mt-2 text-sm text-gray-600">
-                        <p>Venue: {match.matchedUser.comfortPreferences.venue}</p>
-                        <p>Activity: {match.matchedUser.comfortPreferences.activity}</p>
-                        <p>Time: {match.matchedUser.comfortPreferences.time}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="px-6 py-4 bg-gray-50 space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => handleDateSuggestion(match)}
-                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-rose-200 text-sm font-medium rounded-md text-rose-700 bg-white hover:bg-rose-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500"
-                  >
-                    <svg className="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    Plan a Date
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSendNote(match)}
-                    className="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500"
-                  >
-                    <svg className="mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    Send a Note
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-
-        {/* Date Planning Modal */}
-        <AnimatePresence>
-          {selectedMatch && !showNoteModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4"
+    <div className="container mx-auto px-4 py-8">
+      {error ? (
+        <div className="text-center py-12">
+          <p className="text-rose-600">{error}</p>
+          {error.includes('profile') && (
+            <button
+              onClick={() => navigate('/onboarding')}
+              className="mt-4 px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors duration-200"
             >
-              <motion.div
-                initial={{ scale: 0.9 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0.9 }}
-                className="bg-white rounded-lg max-w-md w-full p-6 space-y-4"
-              >
-                <div className="flex justify-between items-center">
-                  <h3 className="text-xl font-serif text-gray-900">Plan Your Date</h3>
-                  <div className="flex space-x-2">
-                    {planningSteps.map((_, idx) => (
-                      <div
-                        key={idx}
-                        className={`h-2 w-2 rounded-full ${
-                          idx === dateStep ? 'bg-rose-600' : 'bg-rose-200'
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <p className="text-sm text-gray-600">{planningSteps[dateStep].description}</p>
-
-                <div className="space-y-4">
-                  {dateStep === 0 && (
-                    <div className="grid grid-cols-2 gap-4">
-                      {Object.entries(dateSuggestions).map(([type]) => (
-                        <button
-                          key={type}
-                          onClick={() => setDateStep(1)}
-                          className="p-4 text-left rounded-lg border border-rose-200 hover:bg-rose-50"
-                        >
-                          <h4 className="font-medium capitalize">{type}</h4>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {dateStep === 1 && (
-                    <div className="space-y-3">
-                      {dateSuggestions[Object.keys(dateSuggestions)[0]].map((place, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => setDateStep(2)}
-                          className="w-full p-4 text-left rounded-lg border border-rose-200 hover:bg-rose-50"
-                        >
-                          {place}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {dateStep === 2 && (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-7 gap-2">
-                        {[...Array(7)].map((_, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => setDateStep(3)}
-                            className="p-4 rounded-lg border border-rose-200 hover:bg-rose-50"
-                          >
-                            {['S', 'M', 'T', 'W', 'T', 'F', 'S'][idx]}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {['Morning', 'Afternoon', 'Evening'].map((time) => (
-                          <button
-                            key={time}
-                            onClick={() => setDateStep(3)}
-                            className="p-4 rounded-lg border border-rose-200 hover:bg-rose-50"
-                          >
-                            {time}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {dateStep === 3 && (
-                    <div className="space-y-4">
-                      <textarea
-                        className="w-full h-32 p-4 border border-rose-200 rounded-lg focus:ring-rose-500 focus:border-rose-500"
-                        placeholder="Add a personal note..."
-                      />
-                      <button
-                        onClick={() => {
-                          setSelectedMatch(null);
-                          setDateStep(0);
-                        }}
-                        className="w-full py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700"
-                      >
-                        Send Date Invitation
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-between mt-6">
-                  <button
-                    onClick={() => dateStep > 0 && setDateStep(dateStep - 1)}
-                    className={`text-sm text-rose-600 ${
-                      dateStep === 0 ? 'invisible' : ''
-                    }`}
-                  >
-                    Back
-                  </button>
-                  <button
-                    onClick={() => setSelectedMatch(null)}
-                    className="text-sm text-gray-500"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
+              Complete Profile
+            </button>
           )}
-        </AnimatePresence>
-
-        {/* Handwritten Note Modal */}
-        <AnimatePresence>
-          {showNoteModal && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4"
-            >
-              <motion.div
-                initial={{ scale: 0.9 }}
-                animate={{ scale: 1 }}
-                exit={{ scale: 0.9 }}
-                className="bg-white rounded-lg max-w-md w-full p-6 space-y-4"
+        </div>
+      ) : matches.length === 0 ? (
+        <div className="text-center py-12">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">No Matches Found</h2>
+          <p className="text-gray-600">Check back later for new potential matches!</p>
+        </div>
+      ) : (
+        <>
+          <h1 className="text-3xl font-bold mb-8 text-gray-800">Your Matches</h1>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {matches.map((match) => (
+              <div
+                key={match.id}
+                className="bg-white rounded-lg shadow-lg overflow-hidden"
               >
-                <h3 className="text-xl font-serif text-gray-900">Write a Note</h3>
-                <div className="relative">
-                  <textarea
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    className="w-full h-48 p-4 bg-rose-50 border-b border-rose-200 font-handwriting text-lg focus:outline-none focus:border-rose-500"
-                    placeholder="Dear..."
-                    style={{
-                      backgroundImage: 'repeating-linear-gradient(transparent, transparent 31px, #f43f5e 31px, #f43f5e 32px)',
-                      lineHeight: '32px',
-                      padding: '8px 10px'
+                <div className="relative h-48">
+                  <img
+                    src={match.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(match.name)}`}
+                    alt={match.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(match.name)}`;
                     }}
                   />
                 </div>
-                <div className="flex justify-end space-x-3">
-                  <button
-                    onClick={() => {
-                      setShowNoteModal(false);
-                      setNoteText('');
-                    }}
-                    className="px-4 py-2 text-sm text-gray-500"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={submitNote}
-                    className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700"
-                  >
-                    Send Note
-                  </button>
+                <div className="p-4">
+                  <h2 className="text-xl font-semibold text-gray-800">{match.name}</h2>
+                  <p className="text-gray-600">{match.age} • {match.location}</p>
+                  
+                  {match.activities && match.activities.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-sm text-gray-500 mb-2">Interests:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {match.activities.map((activity, index) => (
+                          <span
+                            key={index}
+                            className="px-2 py-1 text-xs bg-rose-100 text-rose-700 rounded-full"
+                          >
+                            {activity}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {match.spotifyLink && (
+                    <a
+                      href={match.spotifyLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-4 flex items-center text-green-600 hover:text-green-700"
+                    >
+                      <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                      </svg>
+                      Listen on Spotify
+                    </a>
+                  )}
+
+                  <div className="mt-4 flex gap-4">
+                    <button
+                      onClick={() => handlePlanDate(match.id)}
+                      className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors"
+                    >
+                      Plan Date
+                    </button>
+                    <button
+                      onClick={() => handleSendNote(match.id)}
+                      className="flex-1 px-4 py-2 border border-rose-500 text-rose-500 rounded-lg hover:bg-rose-50 transition-colors"
+                    >
+                      Send Note
+                    </button>
+                  </div>
                 </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </motion.div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      <SeedDatabaseButton />
+    </div>
   );
 } 
