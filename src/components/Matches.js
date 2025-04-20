@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../utils/firebase';
-import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import Profile from './Profile';
 import DiscoveryProfile from './DiscoveryProfile';
@@ -271,6 +271,7 @@ export default function Matches() {
   const [lastRequestedProfile, setLastRequestedProfile] = useState(null);
   const [userInterests, setUserInterests] = useState(new Set());
   const [expandedEvent, setExpandedEvent] = useState(null);
+  const [confirmationCode, setConfirmationCode] = useState('');
   const [events, setEvents] = useState([
     {
       title: "Art Gallery Opening",
@@ -363,7 +364,8 @@ export default function Matches() {
           basicInfo: profile.basicInfo,
           photo: profile.photo,
           availability: profile.availability,
-          activities: profile.activities
+          activities: profile.activities,
+          location: profile.basicInfo.location
         },
         returnTo: '/matches'
       }
@@ -491,6 +493,22 @@ export default function Matches() {
     }
   };
 
+  const handleRejectRequest = async (requestId) => {
+    try {
+      const requestRef = doc(db, 'dateRequests', requestId);
+      await updateDoc(requestRef, {
+        status: 'rejected',
+        rejectedAt: new Date(),
+        lastUpdated: new Date()
+      });
+      
+      toast.success('Request declined');
+    } catch (error) {
+      console.error('Error rejecting request:', error);
+      toast.error('Failed to decline request');
+    }
+  };
+
   const renderEventCard = (event, index, isExpanded = false) => {
     const hasAchievements = event.achievements?.length > 0;
     const nextMilestone = hasAchievements ? event.achievements[0] : null;
@@ -567,422 +585,271 @@ export default function Matches() {
     );
   };
 
+  const renderAcceptedDateDetails = ({ request }) => {
+    const otherUserId = request.senderId === currentUser.uid ? request.recipientId : request.senderId;
+    const otherUser = SAMPLE_PROFILES.find(p => p.id === otherUserId);
+    
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-6 space-y-6">
+        <div className="flex items-center gap-4">
+          <img
+            src={otherUser?.photo}
+            alt={otherUser?.basicInfo.name}
+            className="w-16 h-16 rounded-full object-cover"
+          />
+          <div>
+            <h3 className="text-lg font-semibold">{otherUser?.basicInfo.name}</h3>
+            <p className="text-gray-600">{otherUser?.basicInfo.location}</p>
+          </div>
+        </div>
+
+        <div className="border-t border-b border-gray-100 py-4">
+          <h4 className="font-medium mb-2">Date Details</h4>
+          <div className="space-y-1 text-gray-600">
+            <p>Activity: {request.dateDetails?.activity}</p>
+            <p>When: {request.dateDetails?.day} at {request.dateDetails?.time}</p>
+            <p>Where: {request.dateDetails?.venue}</p>
+          </div>
+        </div>
+
+        {/* Verification Code Section */}
+        <div className="space-y-4">
+          {request.status === 'accepted' && (
+            <div className="text-center">
+              {request.verificationStartedBy === currentUser.uid ? (
+                <div className="space-y-4">
+                  <div className="text-4xl font-mono font-bold tracking-wider bg-rose-50 text-rose-600 p-4 rounded-lg inline-block">
+                    {request.preVerificationCode}
+                  </div>
+                  <p className="text-gray-600">Show this code to {otherUser?.basicInfo.name}</p>
+                </div>
+              ) : request.verificationStartedBy ? (
+                <div className="space-y-4">
+                  <input
+                    type="text"
+                    maxLength="4"
+                    placeholder="Enter 4-digit code"
+                    value={confirmationCode}
+                    onChange={(e) => setConfirmationCode(e.target.value.replace(/\D/g, ''))}
+                    className="text-center text-4xl font-mono tracking-wider w-40 p-4 border-2 border-gray-200 rounded-lg focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                  />
+                  <p className="text-gray-600">Enter the code shown by {otherUser?.basicInfo.name}</p>
+                  <button
+                    onClick={() => handleVerifyCode(request.id)}
+                    disabled={confirmationCode.length !== 4}
+                    className="px-6 py-2 bg-rose-500 text-white rounded-lg disabled:opacity-50"
+                  >
+                    Verify Code
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <button
+                    onClick={() => handleStartVerification(request.id)}
+                    className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors"
+                  >
+                    Start Verification
+                  </button>
+                  <p className="text-sm text-gray-500">Generate a code to verify you met</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Events Section */}
+        <div className="space-y-4">
+          <h4 className="font-medium">Suggested Events</h4>
+          <div className="grid grid-cols-1 gap-4">
+            {events.slice(0, 3).map(event => (
+              <div key={event.id} className="border border-gray-100 rounded-lg p-4">
+                <h5 className="font-medium">{event.title}</h5>
+                <p className="text-gray-600 text-sm">{event.date} at {event.time}</p>
+                <p className="text-gray-600 text-sm">{event.location}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderDatesView = () => (
     <motion.div
       key="dates"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="space-y-4"
+      className="space-y-6"
     >
       <h2 className="text-xl font-semibold text-gray-900">Your Dates</h2>
+      
+      {/* Confirmed Dates */}
       {dateRequests
-        .filter(date => date.status === 'confirmed')
-        .map((date, index) => {
-          const otherPerson = SAMPLE_PROFILES.find(
-            p => p.id === (date.senderId === currentUser.uid ? date.recipientId : date.senderId)
-          );
-          return (
-            <div
-              key={`${date.id}-${index}`}
-              className="bg-white rounded-xl shadow-sm p-4"
-            >
-              <div className="flex items-center gap-4">
-                <img
-                  src={otherPerson?.photo}
-                  alt={otherPerson?.basicInfo.name}
-                  className="w-16 h-16 rounded-full object-cover"
-                />
-                <div className="flex-1">
-                  <h3 className="font-medium">{otherPerson?.basicInfo.name}</h3>
-                  <p className="text-sm text-gray-600">
-                    {date.dateDetails.day} at {date.dateDetails.time}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    Activity: {date.dateDetails.activity}
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleViewDate(date)}
-                  className="px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600"
-                >
-                  View
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      {dateRequests.filter(r => r.status === 'confirmed').length === 0 && (
-        <p className="text-center text-gray-600 py-8">No confirmed dates</p>
+        .filter(request => request.status === 'confirmed')
+        .map(request => (
+          <div key={`date-${request.id}`}>
+            {renderAcceptedDateDetails({ request })}
+          </div>
+        ))}
+
+      {/* No Dates Message */}
+      {!dateRequests.some(r => r.status === 'confirmed') && (
+        <div className="text-center py-12 bg-white rounded-xl shadow-sm">
+          <p className="text-gray-600">No confirmed dates yet</p>
+          <p className="text-sm text-gray-500 mt-2">
+            When you accept a date request, it will appear here
+          </p>
+        </div>
       )}
     </motion.div>
   );
 
-  // Convert to a proper React component
-  const AcceptedDateDetails = ({ request }) => {
-    const navigate = useNavigate();
-    const otherUser = SAMPLE_PROFILES.find(p => 
-      p.id === (request.senderId === currentUser.uid ? request.recipientId : request.senderId)
-    );
-    const [confirmationCode, setConfirmationCode] = useState('');
-    const [isDateComplete, setIsDateComplete] = useState(false);
-    const [retryCount, setRetryCount] = useState(0);
+  // Add handler functions for verification
+  const handleStartVerification = async (requestId) => {
+    try {
+      // Generate a random 4-digit code
+      const code = Math.floor(1000 + Math.random() * 9000).toString();
+      
+      // Update local state immediately
+      setDateRequests(prev => prev.map(req => {
+        if (req.id === requestId) {
+          return {
+            ...req,
+            preVerificationCode: code,
+            verificationStartedBy: currentUser.uid
+          };
+        }
+        return req;
+      }));
 
-    const handleStartVerification = async () => {
-      try {
-        const code = Math.floor(1000 + Math.random() * 9000).toString();
-        console.log('Generated verification code:', code);
-        
-        const requestRef = doc(db, 'dateRequests', request.id);
-        const updateData = {
-          status: 'pre_verification',
-          preVerificationCode: code,
-          verificationStartedBy: currentUser.uid,
-          lastUpdated: new Date(),
-          codeExpiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
-        };
-        
-        await updateDoc(requestRef, updateData);
-        toast.success('Show this code to your date partner!');
-      } catch (error) {
-        console.error('Error starting verification:', error);
-        toast.error('Failed to start verification. Please try again.');
-      }
-    };
+      // Update Firestore
+      const requestRef = doc(db, 'dateRequests', requestId);
+      await updateDoc(requestRef, {
+        preVerificationCode: code,
+        verificationStartedBy: currentUser.uid,
+        lastUpdated: serverTimestamp()
+      }).catch(error => {
+        // If Firestore update fails, reset local state
+        setDateRequests(prev => prev.map(req => {
+          if (req.id === requestId) {
+            return {
+              ...req,
+              preVerificationCode: null,
+              verificationStartedBy: null
+            };
+          }
+          return req;
+        }));
+        throw error;
+      });
+      
+      toast.success('Verification code generated!');
+    } catch (error) {
+      console.error('Error starting verification:', error);
+      toast.error('Failed to generate verification code');
+    }
+  };
 
-    const handleVerifyCode = async () => {
-      if (!confirmationCode) {
-        toast.error('Please enter the verification code');
+  const handleVerifyCode = async (requestId) => {
+    if (!confirmationCode || confirmationCode.length !== 4) {
+      toast.error('Please enter a valid 4-digit code');
+      return;
+    }
+
+    try {
+      const requestRef = doc(db, 'dateRequests', requestId);
+      const requestDoc = await getDoc(requestRef);
+      
+      if (!requestDoc.exists()) {
+        toast.error('Date request not found');
         return;
       }
 
-      try {
-        const requestRef = doc(db, 'dateRequests', request.id);
-        const requestDoc = await getDoc(requestRef);
-        const requestData = requestDoc.data();
+      const requestData = requestDoc.data();
+      
+      if (requestData.preVerificationCode === confirmationCode) {
+        await updateDoc(requestRef, {
+          status: 'completed',
+          completedAt: serverTimestamp(),
+          preVerificationCode: null,
+          verificationStartedBy: null,
+          lastUpdated: serverTimestamp()
+        });
 
-        if (requestData.preVerificationCode === confirmationCode) {
-          await updateDoc(requestRef, {
-            status: 'in_progress',
-            preVerificationCode: null,
-            verificationStartedBy: null,
-            verifiedAt: new Date(),
-            lastUpdated: new Date()
-          });
-
-          setConfirmationCode('');
-          toast.success('Verified! Have a great date!');
-          setTimeout(() => navigate('/'), 2000);
-        } else {
-          setRetryCount(prev => prev + 1);
-          toast.error('Incorrect code. Please try again.');
-        }
-    } catch (error) {
-        console.error('Error verifying code:', error);
-        toast.error('Failed to verify code. Please try again.');
+        setConfirmationCode('');
+        toast.success('Date verified! Have a great time!');
+        navigate('/');
+      } else {
+        toast.error('Incorrect code. Please try again.');
+        setConfirmationCode('');
       }
-    };
-
-    return (
-      <div className="bg-white rounded-xl shadow-sm p-6">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-            You're Connected!
-          </h2>
-          <p className="text-gray-600">
-            You and {otherUser?.basicInfo.name} can now plan your date!
-          </p>
-        </div>
-        
-        <div className="flex items-center justify-center space-x-4 mb-6">
-          <img
-            src={otherUser?.photo}
-            alt={otherUser?.basicInfo.name}
-            className="w-24 h-24 rounded-full object-cover"
-          />
-          <div className="text-left">
-            <h3 className="font-medium text-lg">{otherUser?.basicInfo.name}</h3>
-            <p className="text-gray-600">{otherUser?.basicInfo.location}</p>
-          </div>
-        </div>
-
-        <div className="bg-rose-50 rounded-lg p-4 mb-6">
-          <h4 className="font-medium text-rose-900 mb-2">Date Details</h4>
-          <div className="space-y-2 text-rose-800">
-            <p><span className="font-medium">When:</span> {request.dateDetails.day} at {request.dateDetails.time}</p>
-            <p><span className="font-medium">Activity:</span> {request.dateDetails.activity}</p>
-            {request.dateDetails.message && (
-              <p><span className="font-medium">Message:</span> {request.dateDetails.message}</p>
-            )}
-          </div>
-        </div>
-
-        {request.status === 'accepted' && (
-          <div className="flex flex-col items-center space-y-4">
-            <div className="text-center p-4 bg-rose-50 rounded-lg mb-4">
-              <p className="text-gray-700">
-                When you meet {otherUser?.basicInfo.name}, verify you found each other by sharing a quick code
-              </p>
-            </div>
-            <div className="flex justify-center space-x-4">
-              <button
-                onClick={() => navigate('/chat')}
-                className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors"
-              >
-                Start Planning
-              </button>
-              <button
-                onClick={handleStartVerification}
-                className="px-6 py-2 border border-rose-500 text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-              >
-                Start Verification
-              </button>
-            </div>
-          </div>
-        )}
-
-        {request.status === 'pre_verification' && (
-          <div className="mt-6">
-            {request.verificationStartedBy === currentUser.uid ? (
-              <div className="text-center p-6 bg-rose-50 rounded-lg">
-                <p className="text-lg font-medium text-rose-900 mb-2">Your Verification Code</p>
-                <p className="text-4xl font-mono tracking-wider text-rose-600 mb-4">
-                  {request.preVerificationCode}
-                </p>
-                <p className="text-sm text-rose-700">
-                  Show this code to {otherUser?.basicInfo.name} to verify you found each other
-                </p>
-                <p className="mt-2 text-xs text-rose-600">
-                  Code expires in 5 minutes
-                </p>
-                <button
-                  onClick={handleStartVerification}
-                  className="mt-4 px-4 py-2 text-sm border border-rose-500 text-rose-600 rounded-lg hover:bg-rose-50 transition-colors"
-                >
-                  Generate New Code
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="text-center p-4 bg-rose-50 rounded-lg mb-4">
-                  <p className="text-gray-700">
-                    Ask {otherUser?.basicInfo.name} for their verification code
-                  </p>
-                </div>
-                <div className="flex flex-col items-center space-y-4">
-                  <input
-                    type="text"
-                    value={confirmationCode}
-                    onChange={(e) => {
-                      const value = e.target.value.replace(/\D/g, '').slice(0, 4);
-                      setConfirmationCode(value);
-                      if (value.length === 4) {
-                        handleVerifyCode();
-                      }
-                    }}
-                    placeholder="0000"
-                    className="w-36 px-4 py-2 text-center text-3xl font-mono tracking-wider border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500"
-                    maxLength={4}
-                    autoFocus
-                  />
-                  <p className="text-sm text-gray-500">
-                    Enter the 4-digit code
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {request.status === 'in_progress' && (
-          <div className="flex flex-col items-center space-y-4">
-            <div className="text-center p-4 bg-green-50 rounded-lg mb-4">
-              <p className="text-green-700">
-                Verified! Have a great date!
-              </p>
-            </div>
-            <button
-              onClick={() => navigate('/')}
-              className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors"
-            >
-              Return to Discovery
-            </button>
-          </div>
-        )}
-      </div>
-    );
+    } catch (error) {
+      console.error('Error verifying code:', error);
+      toast.error('Failed to verify code');
+    }
   };
 
-  // Update the renderDiscoveryView function to use the new component
-  const renderDiscoveryView = () => {
-    // Find accepted request if it exists
-    const acceptedRequest = dateRequests.find(r => 
-      r.status === 'accepted' && 
-      (r.senderId === currentUser.uid || r.recipientId === currentUser.uid)
-    );
-
-    return (
-      <motion.div
-        key="discovery"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="space-y-8"
-      >
-        {acceptedRequest ? (
-          <div className="space-y-8">
-            <AcceptedDateDetails request={acceptedRequest} />
-
-            {events.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm p-6">
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    Events You Might Both Enjoy
-                  </h3>
-                  <p className="text-gray-600">
-                    Here are some events that match your shared interests:
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {events.map((event, index) => (
-                    <motion.div
-                      key={`${event.title}-${index}`}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                    >
-                      {renderEventCard(event, index)}
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : hasPendingOutgoingRequest && lastRequestedProfile ? (
-          <div className="space-y-8">
-            <div className="bg-white rounded-xl shadow-sm p-6">
-              <div className="text-center mb-6">
-                <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-                  Invite Sent!
-                </h2>
-                <p className="text-gray-600">
-                  We'll notify you when {lastRequestedProfile.basicInfo.name} responds to your invite.
-                </p>
-              </div>
-              <div className="flex items-center justify-center space-x-4">
-                <img
-                  src={lastRequestedProfile.photo}
-                  alt={lastRequestedProfile.basicInfo.name}
-                  className="w-24 h-24 rounded-full object-cover"
-                />
-                <div className="text-left">
-                  <h3 className="font-medium text-lg">{lastRequestedProfile.basicInfo.name}</h3>
-                  <p className="text-gray-600">{lastRequestedProfile.basicInfo.location}</p>
-                </div>
-              </div>
-            </div>
-
-            {events.length > 0 && (
-              <div className="bg-white rounded-xl shadow-sm p-6">
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                    While You Wait...
-                  </h3>
-                  <p className="text-gray-600">
-                    Check out these local events that match your interests:
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {events.map((event, index) => (
-                    <motion.div
-                      key={`${event.title}-${index}`}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                    >
-                      {renderEventCard(event, index)}
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : availableProfiles.length > 0 ? (
-          <DiscoveryProfile
-            profile={availableProfiles[currentProfileIndex]}
-            onSkip={handleSkip}
-            onProposeDate={handleProposeDate}
-          />
-        ) : (
-          <div className="text-center py-8 bg-white rounded-xl shadow-sm">
-            <p className="text-gray-600">No more profiles available</p>
-            <p className="text-sm text-gray-500 mt-2">
-              Check back later for new matches!
-            </p>
-          </div>
-        )}
-      </motion.div>
-    );
-  };
-
-  // Update the requests view to show more details
   const renderRequestsView = () => (
     <motion.div
       key="requests"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="space-y-4"
+      className="space-y-6"
     >
       <h2 className="text-xl font-semibold text-gray-900">Date Requests</h2>
-      {dateRequests
-        .filter(request => request.status === 'pending' && request.recipientId === currentUser.uid)
+      
+      {/* Pending Requests */}
+      {pendingRequests
+        .filter(request => request.recipientId === currentUser.uid)
         .map(request => {
           const sender = SAMPLE_PROFILES.find(p => p.id === request.senderId);
           if (!sender) return null;
           
           return (
-            <div
-              key={request.id}
-              className="bg-white rounded-xl shadow-sm p-6"
-            >
-              <div className="flex items-center gap-6">
+            <div key={request.id} className="bg-white rounded-xl shadow-sm p-6">
+              <div className="flex items-center gap-4">
                 <img
                   src={sender.photo}
                   alt={sender.basicInfo.name}
-                  className="w-20 h-20 rounded-full object-cover"
+                  className="w-16 h-16 rounded-full object-cover"
                 />
-                <div className="flex-1">
-                  <h3 className="text-lg font-medium mb-1">{sender.basicInfo.name}</h3>
-                  <p className="text-gray-600 mb-2">{sender.basicInfo.location}</p>
-                  {request.dateDetails && (
-                    <div className="text-sm text-gray-600">
-                      <p>Suggested: {request.dateDetails.activity}</p>
-                      <p>{request.dateDetails.day} at {request.dateDetails.time}</p>
-                    </div>
-                  )}
+                <div>
+                  <h3 className="text-lg font-semibold">{sender.basicInfo.name}</h3>
+                  <p className="text-gray-600">{sender.basicInfo.location}</p>
                 </div>
-                <div className="flex flex-col gap-3">
-                  <button
-                    onClick={() => handleAcceptRequest(request)}
-                    className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors"
-                  >
-                    Accept
-                  </button>
-                  <button
-                    onClick={() => handleViewRequest(request)}
-                    className="px-6 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    View Details
-                  </button>
+              </div>
+              
+              <div className="mt-4 border-t border-gray-100 pt-4">
+                <h4 className="font-medium mb-2">Date Details</h4>
+                <div className="space-y-1 text-gray-600">
+                  <p>Activity: {request.dateDetails?.activity}</p>
+                  <p>When: {request.dateDetails?.day} at {request.dateDetails?.time}</p>
+                  <p>Where: {request.dateDetails?.venue}</p>
                 </div>
+              </div>
+              
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={() => handleAcceptRequest(request)}
+                  className="flex-1 bg-rose-500 text-white py-2 rounded-lg hover:bg-rose-600 transition-colors"
+                >
+                  Accept
+                </button>
+                <button
+                  onClick={() => handleRejectRequest(request.id)}
+                  className="flex-1 border border-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Decline
+                </button>
               </div>
             </div>
           );
         })}
-      {dateRequests.filter(r => r.status === 'pending' && r.recipientId === currentUser.uid).length === 0 && (
+      
+      {/* No Requests Message */}
+      {!pendingRequests.some(r => r.recipientId === currentUser.uid) && (
         <div className="text-center py-12 bg-white rounded-xl shadow-sm">
           <p className="text-gray-600">No pending requests</p>
           <p className="text-sm text-gray-500 mt-2">
@@ -992,6 +859,72 @@ export default function Matches() {
       )}
     </motion.div>
   );
+
+  const renderDiscoveryView = () => {
+    // Check if there's an accepted date request
+    const acceptedRequest = dateRequests.find(r => r.status === 'accepted');
+    
+    if (acceptedRequest) {
+      return renderAcceptedDateDetails({ request: acceptedRequest });
+    }
+
+    // Show waiting screen if there's a pending outgoing request
+    if (hasPendingOutgoingRequest && lastRequestedProfile) {
+      return (
+        <motion.div
+          key="waiting"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="space-y-6"
+        >
+          <div className="bg-white rounded-xl shadow-sm p-6 text-center">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              Waiting for {lastRequestedProfile.basicInfo.name}'s Response
+            </h2>
+            <p className="text-gray-600">
+              We'll notify you when they respond to your date request
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">While You Wait</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {events.slice(0, 4).map((event, index) => renderEventCard(event, index))}
+            </div>
+          </div>
+        </motion.div>
+      );
+    }
+
+    // Show regular discovery view
+    if (!availableProfiles.length) {
+      return (
+        <div className="text-center py-12 bg-white rounded-xl shadow-sm">
+          <p className="text-gray-600">No more profiles available</p>
+          <p className="text-sm text-gray-500 mt-2">
+            Check back later for new potential matches
+          </p>
+        </div>
+      );
+    }
+
+    const currentProfile = availableProfiles[currentProfileIndex];
+    return (
+      <motion.div
+        key="discovery"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+      >
+        <DiscoveryProfile
+          profile={currentProfile}
+          onSkip={handleSkip}
+          onProposeDate={() => handleProposeDate(currentProfile)}
+        />
+      </motion.div>
+    );
+  };
 
   useEffect(() => {
     if (!currentUser) {

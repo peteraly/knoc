@@ -1,11 +1,12 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
 import { 
-  initializeFirestore, 
-  collection, 
-  addDoc, 
-  doc, 
-  updateDoc, 
+  getFirestore,
+  enableIndexedDbPersistence,
+  collection,
+  addDoc,
+  doc,
+  updateDoc,
   serverTimestamp,
   setDoc,
   getDoc
@@ -24,7 +25,15 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app;
+try {
+  app = initializeApp(firebaseConfig);
+} catch (error) {
+  if (!/already exists/.test(error.message)) {
+    console.error('Firebase initialization error:', error.stack);
+  }
+  app = initializeApp(firebaseConfig, 'default');
+}
 
 // Initialize Auth
 const auth = getAuth(app);
@@ -45,11 +54,17 @@ linkedInProvider.setCustomParameters({
 });
 
 // Initialize Firestore with persistence
-const db = initializeFirestore(app, {
-  cache: {
-    sizeBytes: 100 * 1024 * 1024 // 100MB cache size
-  }
-});
+const db = getFirestore(app);
+
+// Enable offline persistence
+enableIndexedDbPersistence(db)
+  .catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+    } else if (err.code === 'unimplemented') {
+      console.warn('The current browser doesn\'t support persistence.');
+    }
+  });
 
 // Initialize Messaging
 const messaging = getMessaging(app);
@@ -175,4 +190,20 @@ export const planDate = async (fromUserId, toUserId, dateDetails) => {
   }
 };
 
-export { app, db, auth, messaging, googleProvider, linkedInProvider }; 
+// Export all the Firebase services and functions we need
+export { 
+  auth, 
+  messaging, 
+  googleProvider, 
+  linkedInProvider, 
+  db,
+  collection,
+  addDoc,
+  doc,
+  updateDoc,
+  serverTimestamp,
+  setDoc,
+  getDoc,
+  getToken,
+  onMessage
+}; 

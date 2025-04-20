@@ -1,81 +1,98 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
-import { Toaster } from 'react-hot-toast';
-import PrivateRoute from './components/PrivateRoute';
-import Navigation from './components/Navigation';
-import DatingDashboard from './components/Matches';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import Home from './components/Home';
 import Profile from './components/Profile';
 import Login from './components/Login';
 import OnboardingForm from './components/OnboardingForm';
+import FaceSelection from './components/FaceSelection';
+import Matches from './components/Matches';
 import DatePlanning from './components/DatePlanning';
-import Chat from './components/Chat';
+import PrivateRoute from './components/PrivateRoute';
+import { Toaster } from 'react-hot-toast';
+import Navigation from './components/Navigation';
 import DevTools from './components/DevTools';
 import Explore from './components/Explore';
+import { AuthProvider } from './contexts/AuthContext';
 
-export default function App() {
+// Configure Router with future flags
+const router = {
+  future: {
+    v7_startTransition: true,
+    v7_relativeSplatPath: true
+  }
+};
+
+function App() {
   return (
-    <Router>
+    <BrowserRouter {...router}>
       <AuthProvider>
         <div className="min-h-screen bg-gray-50 pb-16">
           <Toaster position="top-center" />
           <Routes>
-            {/* Auth Routes */}
             <Route path="/login" element={<Login />} />
-            
-            {/* Onboarding Routes */}
-            <Route path="/onboarding" element={
-              <PrivateRoute>
-                <OnboardingForm />
-              </PrivateRoute>
-            } />
-            
-            {/* Main App Routes */}
-            <Route path="/" element={<Navigate to="/matches" replace />} />
-            <Route path="/matches" element={
-              <PrivateRoute>
-                <DatingDashboard />
-              </PrivateRoute>
-            } />
-            <Route path="/explore" element={
-              <PrivateRoute>
-                <Explore />
-              </PrivateRoute>
-            } />
-            <Route path="/profile" element={
-              <PrivateRoute>
-                <Profile />
-              </PrivateRoute>
-            } />
-            <Route path="/account" element={
-              <PrivateRoute>
-                <Profile />
-              </PrivateRoute>
-            } />
-            <Route path="/date-planning/new" element={
-              <PrivateRoute>
-                <DatePlanning />
-              </PrivateRoute>
-            } />
-            <Route path="/chat/:chatId" element={
-              <PrivateRoute>
-                <Chat />
-              </PrivateRoute>
-            } />
-            <Route path="/dates" element={
-              <Navigate to="/matches" replace />
-            } />
-            <Route path="/face-selection" element={
-              <Navigate to="/profile" replace />
-            } />
-            
-            {/* Catch all route */}
-            <Route path="*" element={<Navigate to="/matches" replace />} />
+            <Route 
+              path="/" 
+              element={
+                <PrivateRoute>
+                  <Home />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/profile" 
+              element={
+                <PrivateRoute>
+                  <Profile />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/onboarding" 
+              element={
+                <PrivateRoute>
+                  <OnboardingForm />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/face-selection" 
+              element={
+                <PrivateRoute>
+                  <FaceSelection />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/matches" 
+              element={
+                <PrivateRoute>
+                  <Matches />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/date-planning" 
+              element={
+                <PrivateRoute>
+                  <DatePlanning />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/explore" 
+              element={
+                <PrivateRoute>
+                  <Explore />
+                </PrivateRoute>
+              } 
+            />
           </Routes>
           <Navigation />
           <DevTools />
         </div>
       </AuthProvider>
-    </Router>
+    </BrowserRouter>
   );
-} 
+}
+
+export default App; 

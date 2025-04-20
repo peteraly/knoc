@@ -248,30 +248,55 @@ export default function DatePlanning() {
       return;
     }
 
+    if (!profile || !profile.id) {
+      toast.error('Invalid profile data');
+      return;
+    }
+
     try {
+      setLoading(true);
       const dateRequestRef = collection(db, 'dateRequests');
+      
+      // Create the date request
       const newRequest = {
         senderId: currentUser.uid,
         recipientId: profile.id,
-        participants: [currentUser.uid, profile.id], // Add both users to participants array
+        participants: [currentUser.uid, profile.id],
         status: 'pending',
         dateDetails: {
           day: selectedDay,
           time: selectedTime,
-          activity: selectedActivity
+          activity: selectedActivity,
+          venue: selectedVenue?.id === 'custom' ? customVenue : selectedVenue?.name,
+          message: message.trim()
         },
-        createdAt: new Date(),
-        lastUpdated: new Date()
+        createdAt: serverTimestamp(),
+        lastUpdated: serverTimestamp()
       };
 
+      // Add the request to Firestore
       const docRef = await addDoc(dateRequestRef, newRequest);
       console.log('Created date request with ID:', docRef.id);
       
+      // Create a notification for the recipient
+      const notificationRef = collection(db, 'notifications');
+      await addDoc(notificationRef, {
+        type: 'date_request',
+        toUserId: profile.id,
+        fromUserId: currentUser.uid,
+        dateRequestId: docRef.id,
+        status: 'unread',
+        createdAt: serverTimestamp(),
+        message: `${currentUser.displayName || 'Someone'} sent you a date request!`
+      });
+      
       toast.success('Date request sent successfully!');
-      navigate(returnTo || '/matches');
+      navigate(returnTo);
     } catch (error) {
       console.error('Error creating date request:', error);
       toast.error('Failed to send date request');
+    } finally {
+      setLoading(false);
     }
   };
 

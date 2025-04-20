@@ -1,11 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db } from '../utils/firebase';
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot 
+} from 'firebase/firestore';
+import { toast } from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
-import { SAMPLE_PROFILES } from './Matches';
+import { SAMPLE_PROFILES } from '../utils/sampleData';
 
 export default function Home() {
   const { currentUser } = useAuth();
