@@ -55,6 +55,11 @@ export default function SendNote() {
       return;
     }
 
+    if (currentUser.uid === matchId) {
+      toast.error('You cannot send a note to yourself');
+      return;
+    }
+
     setLoading(true);
     try {
       const noteData = {

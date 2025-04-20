@@ -1,176 +1,199 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { db } from '../utils/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../utils/firebase';
 import { toast } from 'react-hot-toast';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+
+const TIME_SLOTS = ['Morning', 'Afternoon', 'Evening'];
+const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export default function AvailabilityPicker() {
-  const navigate = useNavigate();
   const { currentUser } = useAuth();
-  const [loading, setLoading] = useState(false);
-  
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const timeSlots = ['Morning', 'Afternoon', 'Evening'];
-  
-  const [availability, setAvailability] = useState({
-    Sunday: [],
-    Monday: [],
-    Tuesday: [],
-    Wednesday: [],
-    Thursday: [],
-    Friday: [],
-    Saturday: []
-  });
-
+  const [loading, setLoading] = useState(true);
+  const [availability, setAvailability] = useState({});
   const [blackoutDates, setBlackoutDates] = useState([]);
+  const [newBlackoutDate, setNewBlackoutDate] = useState(null);
 
-  const toggleTimeSlot = (day, timeSlot) => {
-    setAvailability(prev => ({
-      ...prev,
-      [day]: prev[day].includes(timeSlot)
-        ? prev[day].filter(t => t !== timeSlot)
-        : [...prev[day], timeSlot]
-    }));
+  useEffect(() => {
+    const fetchAvailability = async () => {
+      if (!currentUser) return;
+
+      try {
+        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          // Initialize availability with existing data or empty slots
+          const initialAvailability = userData.availability || {};
+          DAYS.forEach(day => {
+            if (!initialAvailability[day]) {
+              initialAvailability[day] = [];
+            }
+          });
+          setAvailability(initialAvailability);
+          setBlackoutDates(userData.blackoutDates || []);
+        }
+      } catch (error) {
+        console.error('Error fetching availability:', error);
+        toast.error('Failed to load your availability');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAvailability();
+  }, [currentUser]);
+
+  const toggleTimeSlot = (day, slot) => {
+    setAvailability(prev => {
+      const updatedAvailability = { ...prev };
+      const daySlots = updatedAvailability[day] || [];
+      
+      if (daySlots.includes(slot)) {
+        updatedAvailability[day] = daySlots.filter(s => s !== slot);
+      } else {
+        updatedAvailability[day] = [...daySlots, slot].sort();
+      }
+      
+      return updatedAvailability;
+    });
   };
 
-  const handleBlackoutDateAdd = (e) => {
-    const date = e.target.value;
-    if (date && !blackoutDates.includes(date)) {
-      setBlackoutDates(prev => [...prev, date]);
-    }
-  };
+  const addBlackoutDate = () => {
+    if (!newBlackoutDate) return;
 
-  const removeBlackoutDate = (date) => {
-    setBlackoutDates(prev => prev.filter(d => d !== date));
-  };
-
-  const handleSubmit = async () => {
-    // Validate that at least some availability is selected
-    const hasAvailability = Object.values(availability).some(slots => slots.length > 0);
-    if (!hasAvailability) {
-      toast.error('Please select at least one time slot');
+    const dateStr = newBlackoutDate.toISOString().split('T')[0];
+    if (blackoutDates.includes(dateStr)) {
+      toast.error('This date is already blocked');
       return;
     }
 
-    setLoading(true);
-    try {
-      console.log('Saving availability for user:', currentUser.uid);
-      console.log('Availability data:', availability);
-      console.log('Blackout dates:', blackoutDates);
+    setBlackoutDates(prev => [...prev, dateStr].sort());
+    setNewBlackoutDate(null);
+  };
 
-      // Update user profile with availability
-      const userRef = doc(db, 'users', currentUser.uid);
-      const updateData = {
+  const removeBlackoutDate = (dateStr) => {
+    setBlackoutDates(prev => prev.filter(d => d !== dateStr));
+  };
+
+  const handleSubmit = async () => {
+    if (!currentUser) return;
+
+    try {
+      setLoading(true);
+      
+      // Validate that at least one time slot is selected
+      const hasTimeSlots = Object.values(availability).some(slots => slots.length > 0);
+      if (!hasTimeSlots) {
+        throw new Error('Please select at least one time slot');
+      }
+
+      await updateDoc(doc(db, 'users', currentUser.uid), {
         availability,
         blackoutDates,
-        onboardingComplete: true,
-        onboardingStep: 'complete'
-      };
-      
-      console.log('Updating user document with:', updateData);
-      await updateDoc(userRef, updateData);
+        updatedAt: new Date()
+      });
 
-      console.log('Availability saved successfully');
-      toast.success('Availability saved successfully!');
-      
-      // Add a small delay before navigation to ensure the toast is visible
-      setTimeout(() => {
-        console.log('Navigating to matches page');
-        navigate('/matches');
-      }, 1000);
+      toast.success('Availability updated successfully');
     } catch (error) {
-      console.error('Error saving availability:', error);
-      toast.error('Failed to save availability');
+      console.error('Error updating availability:', error);
+      toast.error(error.message || 'Failed to update availability');
     } finally {
       setLoading(false);
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex justify-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-rose-500"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-rose-50 py-8">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-serif text-gray-900">Set Your Availability</h1>
-          <p className="mt-2 text-sm text-rose-600 italic">
-            Let us know when you're free to meet someone special
-          </p>
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-xl font-semibold mb-4">Weekly Availability</h2>
+        <div className="grid gap-4">
+          {DAYS.map(day => (
+            <div key={day} className="p-4 bg-gray-50 rounded-lg">
+              <div className="font-medium text-gray-700 mb-2">{day}</div>
+              <div className="flex flex-wrap gap-2">
+                {TIME_SLOTS.map(slot => (
+                  <button
+                    key={slot}
+                    onClick={() => toggleTimeSlot(day, slot)}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors
+                      ${availability[day]?.includes(slot)
+                        ? 'bg-rose-500 text-white'
+                        : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                  >
+                    {slot}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
+      </div>
 
-        <div className="bg-white rounded-lg shadow-sm p-6 space-y-8">
-          {/* Weekly Availability */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-serif text-gray-900">Weekly Availability</h2>
-            <p className="text-sm text-gray-500">Select the times you're typically available</p>
-
-            <div className="grid gap-4">
-              {days.map((day) => (
-                <div key={day} className="flex items-center space-x-4">
-                  <div className="w-24 font-medium text-gray-700">{day}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {timeSlots.map((timeSlot) => (
-                      <button
-                        key={timeSlot}
-                        onClick={() => toggleTimeSlot(day, timeSlot)}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                          availability[day].includes(timeSlot)
-                            ? 'bg-rose-100 text-rose-700 border-2 border-rose-500'
-                            : 'bg-gray-50 text-gray-700 border border-gray-200 hover:border-rose-200'
-                        }`}
-                      >
-                        {timeSlot}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Blackout Dates */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-serif text-gray-900">Blackout Dates</h2>
-            <p className="text-sm text-gray-500">Add any dates you know you won't be available</p>
-
-            <div className="space-y-4">
-              <input
-                type="date"
-                onChange={handleBlackoutDateAdd}
-                min={new Date().toISOString().split('T')[0]}
-                className="block w-full sm:w-auto rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-              />
-
-              {blackoutDates.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {blackoutDates.map((date) => (
-                    <div
-                      key={date}
-                      className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-rose-100 text-rose-700"
-                    >
-                      {new Date(date).toLocaleDateString()}
-                      <button
-                        onClick={() => removeBlackoutDate(date)}
-                        className="ml-2 text-rose-500 hover:text-rose-700"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex justify-end">
+      <div>
+        <h2 className="text-xl font-semibold mb-4">Blocked Dates</h2>
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <DatePicker
+              selected={newBlackoutDate}
+              onChange={setNewBlackoutDate}
+              minDate={new Date()}
+              placeholderText="Select a date to block"
+              className="w-full p-2 border border-gray-300 rounded-md focus:ring-rose-500 focus:border-rose-500"
+              dateFormat="MMMM d, yyyy"
+            />
             <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 disabled:opacity-50"
+              onClick={addBlackoutDate}
+              disabled={!newBlackoutDate}
+              className="px-4 py-2 bg-rose-500 text-white rounded-md hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Saving...' : 'Complete Setup'}
+              Add
             </button>
           </div>
+
+          <div className="grid gap-2">
+            {blackoutDates.map(date => (
+              <div
+                key={date}
+                className="flex justify-between items-center p-3 bg-gray-50 rounded-lg"
+              >
+                <span>
+                  {new Date(date).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </span>
+                <button
+                  onClick={() => removeBlackoutDate(date)}
+                  className="text-rose-500 hover:text-rose-600"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          className="px-6 py-2 bg-rose-500 text-white rounded-md hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Save Changes
+        </button>
       </div>
     </div>
   );

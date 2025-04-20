@@ -1,8 +1,58 @@
+import { 
+  UserProfile, 
+  Availability, 
+  TimeSlot, 
+  Day,
+  DAYS,
+  validateAvailability,
+  normalizeAvailability
+} from '../types';
+
+interface MatchResult {
+  user: UserProfile;
+  matchScore: number;
+  overlappingSlots: Array<{ day: Day; slot: TimeSlot }>;
+  faceMatch: number;
+  activityMatch: number;
+}
+
 // Helper function to find overlapping time slots
-// This function has been removed to avoid duplicate declaration
+function findOverlappingTimeSlots(
+  rawAvailability1: Record<string, string[]>,
+  rawAvailability2: Record<string, string[]>
+): Array<{ day: Day; slot: TimeSlot }> {
+  try {
+    // Normalize and validate both availabilities
+    const availability1 = validateAvailability(normalizeAvailability(rawAvailability1));
+    const availability2 = validateAvailability(normalizeAvailability(rawAvailability2));
+    
+    const overlappingSlots: Array<{ day: Day; slot: TimeSlot }> = [];
+    
+    DAYS.forEach(day => {
+      const slots1 = availability1[day] || [];
+      const slots2 = availability2[day] || [];
+      
+      // Find common time slots for this day
+      const commonSlots = slots1.filter(slot => slots2.includes(slot));
+      
+      // Add each common slot to the result
+      commonSlots.forEach(slot => {
+        overlappingSlots.push({ day, slot });
+      });
+    });
+    
+    return overlappingSlots;
+  } catch (error) {
+    console.error('Error in findOverlappingTimeSlots:', error);
+    return [];
+  }
+}
 
 // Helper function to calculate face preference match
-function calculateFacePreferenceMatch(selectedFaces1 = [], selectedFaces2 = []) {
+function calculateFacePreferenceMatch(
+  selectedFaces1: number[] = [], 
+  selectedFaces2: number[] = []
+): number {
   if (!Array.isArray(selectedFaces1) || !Array.isArray(selectedFaces2)) return 0;
   if (selectedFaces1.length === 0 || selectedFaces2.length === 0) return 0;
   
@@ -11,7 +61,10 @@ function calculateFacePreferenceMatch(selectedFaces1 = [], selectedFaces2 = []) 
 }
 
 // Helper function to calculate activity preference match
-function calculateActivityMatch(activities1 = [], activities2 = []) {
+function calculateActivityMatch(
+  activities1: string[] = [], 
+  activities2: string[] = []
+): number {
   if (!Array.isArray(activities1) || !Array.isArray(activities2)) return 0;
   if (activities1.length === 0 || activities2.length === 0) return 0;
   
@@ -19,48 +72,8 @@ function calculateActivityMatch(activities1 = [], activities2 = []) {
   return commonActivities.length / Math.max(activities1.length, activities2.length);
 }
 
-/**
- * Find overlapping time slots between two users' availability
- * @param {Object} user1Availability - First user's availability object
- * @param {Object} user2Availability - Second user's availability object
- * @returns {Array} Array of overlapping time slots with day and slot information
- */
-export function findOverlappingTimeSlots(user1Availability, user2Availability) {
-  if (!user1Availability || !user2Availability) {
-    return [];
-  }
-
-  const overlappingSlots = [];
-  
-  // Days of the week (support both lowercase and uppercase)
-  const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-  const daysUpperCase = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  
-  // Time slots (support both lowercase and uppercase)
-  const timeSlots = ['morning', 'afternoon', 'evening'];
-  const timeSlotsUpperCase = ['Morning', 'Afternoon', 'Evening'];
-  
-  // Check each day and time slot for overlap
-  days.forEach((day, index) => {
-    // Try both lowercase and uppercase versions
-    const user1Slots = user1Availability[day] || user1Availability[daysUpperCase[index]] || [];
-    const user2Slots = user2Availability[day] || user2Availability[daysUpperCase[index]] || [];
-    
-    timeSlots.forEach((slot, slotIndex) => {
-      // Try both lowercase and uppercase versions
-      const slotUpperCase = timeSlotsUpperCase[slotIndex];
-      if ((user1Slots.includes(slot) || user1Slots.includes(slotUpperCase)) && 
-          (user2Slots.includes(slot) || user2Slots.includes(slotUpperCase))) {
-        overlappingSlots.push({ day, slot });
-      }
-    });
-  });
-  
-  return overlappingSlots;
-}
-
 // Main matching function
-export function findMatches(user, allUsers) {
+export function findMatches(user: UserProfile, allUsers: UserProfile[]): MatchResult[] {
   if (!user || !Array.isArray(allUsers)) return [];
   
   const matches = allUsers
@@ -105,7 +118,11 @@ export function findMatches(user, allUsers) {
 }
 
 // Function to select the best match
-export function selectBestMatch(matches) {
+export function selectBestMatch(matches: MatchResult[]): {
+  match: UserProfile;
+  timeSlot: { day: Day; slot: TimeSlot };
+  matchScore: number;
+} | null {
   if (!Array.isArray(matches) || matches.length === 0) return null;
 
   // Get the highest scoring match

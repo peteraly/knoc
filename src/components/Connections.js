@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../utils/firebase';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc as firestoreDoc, getDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { motion } from 'framer-motion';
@@ -43,7 +43,7 @@ export default function Connections() {
         // Process sent requests
         for (const docSnap of sentSnap.docs) {
           const request = docSnap.data();
-          const recipientDoc = await getDoc(doc(db, 'users', request.recipientId));
+          const recipientDoc = await getDoc(firestoreDoc(db, 'users', request.recipientId));
           const recipientData = recipientDoc.data();
 
           const connection = {
@@ -77,7 +77,7 @@ export default function Connections() {
         // Process received requests
         for (const docSnap of receivedSnap.docs) {
           const request = docSnap.data();
-          const senderDoc = await getDoc(doc(db, 'users', request.senderId));
+          const senderDoc = await getDoc(firestoreDoc(db, 'users', request.senderId));
           const senderData = senderDoc.data();
 
           const connection = {

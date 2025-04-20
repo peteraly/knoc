@@ -1,6 +1,15 @@
 import { initializeApp } from 'firebase/app';
-import { collection, addDoc, serverTimestamp, updateDoc, doc, enableIndexedDbPersistence, initializeFirestore, CACHE_SIZE_UNLIMITED } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
+import { 
+  initializeFirestore, 
+  collection, 
+  addDoc, 
+  doc, 
+  updateDoc, 
+  serverTimestamp,
+  setDoc,
+  getDoc
+} from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 
 // Your web app's Firebase configuration
@@ -35,20 +44,12 @@ linkedInProvider.setCustomParameters({
   prompt: 'select_account'
 });
 
-// Initialize Firestore with settings for offline persistence
+// Initialize Firestore with persistence
 const db = initializeFirestore(app, {
-  cacheSizeBytes: CACHE_SIZE_UNLIMITED
+  cache: {
+    sizeBytes: 100 * 1024 * 1024 // 100MB cache size
+  }
 });
-
-// Enable offline persistence
-enableIndexedDbPersistence(db)
-  .catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
-    } else if (err.code === 'unimplemented') {
-      console.warn('The current browser does not support persistence.');
-    }
-  });
 
 // Initialize Messaging
 const messaging = getMessaging(app);
@@ -111,23 +112,60 @@ export const sendNote = async (fromUserId, toUserId, noteText) => {
 
 export const planDate = async (fromUserId, toUserId, dateDetails) => {
   try {
-    const dateRef = await addDoc(collection(db, 'dates'), {
-      users: [fromUserId, toUserId],
-      ...dateDetails,
+    if (!dateDetails.matchId) {
+      throw new Error('Invalid date request: missing match ID');
+    }
+
+    // First create the date request
+    const dateRef = await addDoc(collection(db, 'dateRequests'), {
+      senderId: fromUserId,
+      recipientId: toUserId,
       status: 'pending',
       createdAt: serverTimestamp(),
-      confirmedAt: null
+      dateDetails,
+      updatedAt: serverTimestamp(),
+      matchId: dateDetails.matchId // Ensure matchId is set at the root level
     });
     
-    // Update the match with the latest date plan
-    const matchQuery = collection(db, 'matches');
-    const matchDoc = doc(matchQuery, dateDetails.matchId);
-    await updateDoc(matchDoc, {
+    // Create or update the match document
+    const matchesRef = collection(db, 'matches');
+    const matchDoc = doc(matchesRef, dateDetails.matchId);
+    
+    // Check if match document exists
+    const matchSnapshot = await getDoc(matchDoc);
+    
+    const matchData = {
       latestDatePlan: {
         dateId: dateRef.id,
         status: 'pending',
         updatedAt: serverTimestamp()
       }
+    };
+
+    if (!matchSnapshot.exists()) {
+      // Create new match document
+      await setDoc(matchDoc, {
+        users: [fromUserId, toUserId],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        status: 'active',
+        ...matchData
+      });
+    } else {
+      // Update existing match document
+      await updateDoc(matchDoc, matchData);
+    }
+
+    // Create a notification for the recipient
+    await addDoc(collection(db, 'notifications'), {
+      type: 'date_request',
+      toUserId,
+      fromUserId,
+      dateId: dateRef.id,
+      matchId: dateDetails.matchId,
+      status: 'unread',
+      createdAt: serverTimestamp(),
+      message: 'You have a new date request!'
     });
 
     return dateRef.id;

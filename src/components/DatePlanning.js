@@ -1,191 +1,291 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../utils/firebase';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, updateDoc, serverTimestamp, addDoc } from 'firebase/firestore';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const DatePlanning = () => {
-  const { requestId } = useParams();
-  const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
-  const [chat, setChat] = useState(null);
-  const [dateDetails, setDateDetails] = useState({
-    date: '',
-    time: '',
-    venue: '',
-    note: ''
-  });
+  const [error, setError] = useState(null);
+  const [step, setStep] = useState(1); // 1: View Availability, 2: Select Time, 3: Choose Venue, 4: Confirm
+  const [dateRequest, setDateRequest] = useState(null);
+  const [selectedTime, setSelectedTime] = useState(null);
+  const [venue, setVenue] = useState('');
+  const [note, setNote] = useState('');
+  const [matchAvailability, setMatchAvailability] = useState(null);
+  const [dateCode, setDateCode] = useState(null);
+  const [confirmationCode, setConfirmationCode] = useState('');
+  const [showConfirmationInput, setShowConfirmationInput] = useState(false);
+
+  // Generate a random 6-digit code
+  const generateDateCode = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  };
 
   useEffect(() => {
     const fetchDateRequest = async () => {
+      const params = new URLSearchParams(location.search);
+      const dateRequestId = params.get('dateRequestId');
+      const matchId = params.get('matchId');
+
+      if (!dateRequestId && !matchId) {
+        setError('No date request or match ID provided');
+        setLoading(false);
+        return;
+      }
+
       try {
-        const requestDoc = await getDoc(doc(db, 'dateRequests', requestId));
-        if (!requestDoc.exists()) {
-          toast.error('Date request not found');
-          navigate('/matches');
-          return;
-        }
+        if (dateRequestId) {
+          const requestRef = doc(db, 'dateRequests', dateRequestId);
+          const requestSnap = await getDoc(requestRef);
+          
+          if (!requestSnap.exists()) {
+            throw new Error('Date request not found');
+          }
 
-        const requestData = requestDoc.data();
-        if (requestData.status !== 'accepted') {
-          toast.error('This date request is not accepted');
-          navigate('/matches');
-          return;
-        }
+          const requestData = requestSnap.data();
+          setDateRequest({
+            id: requestSnap.id,
+            ...requestData
+          });
 
-        // Fetch chat
-        const chatQuery = query(
-          collection(db, 'chats'),
-          where('dateRequestId', '==', requestId)
-        );
-        const chatSnapshot = await getDocs(chatQuery);
-        if (!chatSnapshot.empty) {
-          const chatDoc = chatSnapshot.docs[0];
-          setChat({ id: chatDoc.id, ...chatDoc.data() });
+          // Fetch match's availability
+          const otherUserId = requestData.senderId === currentUser.uid 
+            ? requestData.recipientId 
+            : requestData.senderId;
+          
+          const userDoc = await getDoc(doc(db, 'users', otherUserId));
+          if (userDoc.exists()) {
+            setMatchAvailability(userDoc.data().availability || {});
+          }
+        } else if (matchId) {
+          // Fetch match details
+          const matchRef = doc(db, 'matches', matchId);
+          const matchSnap = await getDoc(matchRef);
+          
+          if (!matchSnap.exists()) {
+            throw new Error('Match not found');
+          }
+
+          const matchData = matchSnap.data();
+          const otherUserId = matchData.users.find(id => id !== currentUser.uid);
+          
+          const userDoc = await getDoc(doc(db, 'users', otherUserId));
+          if (userDoc.exists()) {
+            setMatchAvailability(userDoc.data().availability || {});
+          }
+
+          setDateRequest({
+            matchId,
+            otherUserId
+          });
         }
       } catch (error) {
-        console.error('Error fetching date request:', error);
-        toast.error('Failed to load date details');
+        console.error('Error fetching data:', error);
+        setError(error.message);
       } finally {
         setLoading(false);
       }
     };
 
     fetchDateRequest();
-  }, [requestId, navigate]);
+  }, [currentUser, location]);
 
-  const handleSubmitDateDetails = async () => {
+  const handleTimeSelect = (time) => {
+    setSelectedTime(time);
+    setStep(3);
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedTime || !venue.trim()) {
+      toast.error('Please select a time and enter a venue');
+      return;
+    }
+
     try {
-      if (!dateDetails.date || !dateDetails.time || !dateDetails.venue) {
-        toast.error('Please fill in all required fields');
-        return;
+      const generatedCode = generateDateCode();
+      setDateCode(generatedCode);
+
+      const dateDetails = {
+        date: selectedTime.date,
+        time: selectedTime.timeStr,
+        venue: venue.trim(),
+        note: note.trim() || null,
+        confirmationCode: generatedCode,
+        status: 'scheduled'
+      };
+
+      if (dateRequest.id) {
+        // Update existing date request
+        await updateDoc(doc(db, 'dateRequests', dateRequest.id), {
+          dateDetails,
+          status: 'scheduled',
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        // Create new date request
+        const newDateRequest = {
+          senderId: currentUser.uid,
+          recipientId: dateRequest.otherUserId,
+          matchId: dateRequest.matchId,
+          status: 'scheduled',
+          dateDetails,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        await addDoc(collection(db, 'dateRequests'), newDateRequest);
       }
 
-      // Update date request with details
-      await updateDoc(doc(db, 'dateRequests', requestId), {
-        dateDetails: {
-          date: dateDetails.date,
-          time: dateDetails.time,
-          venue: dateDetails.venue,
-          note: dateDetails.note
-        },
-        status: 'confirmed',
-        updatedAt: serverTimestamp()
+      setStep(4);
+      toast.success('Date planned successfully!');
+    } catch (error) {
+      console.error('Error planning date:', error);
+      toast.error('Failed to plan date. Please try again.');
+    }
+  };
+
+  const handleConfirmDate = async () => {
+    if (!confirmationCode) {
+      toast.error('Please enter the confirmation code');
+      return;
+    }
+
+    if (confirmationCode !== dateCode) {
+      toast.error('Invalid confirmation code');
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'dateRequests', dateRequest.id), {
+        status: 'completed',
+        completedAt: serverTimestamp()
       });
 
-      // Update date invitation
-      const invitationQuery = query(
-        collection(db, 'dateInvitations'),
-        where('dateRequestId', '==', requestId)
-      );
-      const invitationSnapshot = await getDocs(invitationQuery);
-      if (!invitationSnapshot.empty) {
-        const invitationDoc = invitationSnapshot.docs[0];
-        await updateDoc(doc(db, 'dateInvitations', invitationDoc.id), {
-          proposedDate: dateDetails.date,
-          proposedTime: dateDetails.time,
-          venue: dateDetails.venue,
-          note: dateDetails.note,
-          status: 'confirmed'
-        });
-      }
-
-      // Add message to chat
-      if (chat) {
-        await addDoc(collection(db, 'chats', chat.id, 'messages'), {
-          text: `Date planned for ${dateDetails.date} at ${dateDetails.time} at ${dateDetails.venue}${dateDetails.note ? `\nNote: ${dateDetails.note}` : ''}`,
-          senderId: currentUser.uid,
-          timestamp: serverTimestamp()
-        });
-      }
-
-      toast.success('Date details updated!');
+      toast.success('Date confirmed! Check out new matches.');
       navigate('/matches');
     } catch (error) {
-      console.error('Error updating date details:', error);
-      toast.error('Failed to update date details');
+      console.error('Error confirming date:', error);
+      toast.error('Failed to confirm date');
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500"></div>
       </div>
     );
   }
 
-  return (
-    <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Plan Your Date</h1>
-      
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-white rounded-lg shadow-md p-6 mb-6"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Date</label>
-            <input
-              type="date"
-              value={dateDetails.date}
-              onChange={(e) => setDateDetails(prev => ({ ...prev, date: e.target.value }))}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-            />
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="text-center">
+          <div className="text-rose-500 mb-4">
+            <svg className="h-12 w-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Time</label>
-            <input
-              type="time"
-              value={dateDetails.time}
-              onChange={(e) => setDateDetails(prev => ({ ...prev, time: e.target.value }))}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Venue</label>
-            <input
-              type="text"
-              value={dateDetails.venue}
-              onChange={(e) => setDateDetails(prev => ({ ...prev, venue: e.target.value }))}
-              placeholder="Enter venue name or address"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Additional Notes</label>
-            <textarea
-              value={dateDetails.note}
-              onChange={(e) => setDateDetails(prev => ({ ...prev, note: e.target.value }))}
-              placeholder="Any special requests or preferences?"
-              rows={3}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-rose-500 focus:ring-rose-500"
-            />
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end space-x-4">
+          <p className="text-gray-900 font-medium">{error}</p>
           <button
             onClick={() => navigate('/matches')}
-            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            className="mt-4 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600"
           >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmitDateDetails}
-            className="px-4 py-2 bg-rose-500 text-white rounded-md hover:bg-rose-600"
-          >
-            Confirm Date
+            Go Back
           </button>
         </div>
-      </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-lg mx-auto px-4">
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          {/* Date Details Section */}
+          <div className="p-6 border-b border-gray-100">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Date Details</h2>
+            {dateCode ? (
+              <div className="space-y-6">
+                <div className="bg-rose-50 rounded-lg p-4">
+                  <h3 className="font-medium text-gray-900 mb-2">Your Date Details</h3>
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <p><span className="font-medium">Day:</span> {selectedTime.day}</p>
+                    <p><span className="font-medium">Time:</span> {selectedTime.timeStr}</p>
+                    <p><span className="font-medium">Venue:</span> {venue}</p>
+                    {note && <p><span className="font-medium">Note:</span> {note}</p>}
+                  </div>
+                </div>
+
+                <div className="bg-rose-50 rounded-lg p-4">
+                  <h3 className="font-medium text-gray-900 mb-2">Confirmation Code</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Exchange this code with your date when you meet to confirm the date happened:
+                  </p>
+                  <div className="bg-white rounded-lg p-4 text-center">
+                    <p className="text-2xl font-mono font-bold text-rose-500">{dateCode}</p>
+                  </div>
+                </div>
+
+                {showConfirmationInput && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Enter Confirmation Code
+                      </label>
+                      <input
+                        type="text"
+                        value={confirmationCode}
+                        onChange={(e) => setConfirmationCode(e.target.value)}
+                        placeholder="Enter the code you received"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-rose-500 focus:border-rose-500"
+                      />
+                    </div>
+                    <button
+                      onClick={handleConfirmDate}
+                      className="w-full px-6 py-3 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2"
+                    >
+                      Confirm Date Happened
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex justify-between">
+                  <button
+                    onClick={() => setShowConfirmationInput(!showConfirmationInput)}
+                    className="text-rose-600 hover:text-rose-700 font-medium"
+                  >
+                    {showConfirmationInput ? 'Hide Confirmation' : 'Enter Confirmation Code'}
+                  </button>
+                  <button
+                    onClick={() => navigate('/matches')}
+                    className="text-gray-600 hover:text-gray-700 font-medium"
+                  >
+                    Back to Matches
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Existing form fields */}
+                {/* ... */}
+                <button
+                  onClick={handleSubmit}
+                  className="w-full px-6 py-3 bg-rose-500 text-white rounded-lg font-medium hover:bg-rose-600 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2"
+                >
+                  Confirm Date Details
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

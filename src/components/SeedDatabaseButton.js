@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { seedDatabase } from '../utils/seedDatabase';
 import { toast } from 'react-hot-toast';
 
-export default function SeedDatabaseButton() {
+export default function SeedDatabaseButton({ onSuccess, className = '' }) {
   const [loading, setLoading] = useState(false);
 
   const handleSeed = async () => {
@@ -10,7 +10,12 @@ export default function SeedDatabaseButton() {
     try {
       const success = await seedDatabase();
       if (success) {
-        toast.success('Database seeded successfully! Refresh the page to see matches.');
+        toast.success('Database seeded successfully!');
+        if (onSuccess) {
+          onSuccess();
+        }
+        // Refresh page after a short delay to ensure Firebase operations complete
+        setTimeout(() => window.location.reload(), 1500);
       } else {
         toast.error('Failed to seed database');
       }
@@ -26,11 +31,11 @@ export default function SeedDatabaseButton() {
     <button
       onClick={handleSeed}
       disabled={loading}
-      className={`fixed bottom-4 right-4 px-4 py-2 rounded-lg text-white transition-colors ${
+      className={`px-4 py-2 rounded-lg text-white transition-colors ${
         loading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
-      }`}
+      } ${className}`}
     >
-      {loading ? 'Seeding...' : 'Seed Database'}
+      {loading ? 'Adding Sample Profiles...' : 'Add Sample Profiles'}
     </button>
   );
 } 
