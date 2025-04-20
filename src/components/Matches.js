@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../utils/firebase';
-import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import Profile from './Profile';
 import DiscoveryProfile from './DiscoveryProfile';
@@ -262,11 +262,12 @@ export default function Matches() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [currentView, setCurrentView] = useState('discovery');
+  const [dateRequests, setDateRequests] = useState([]);
   const [availableProfiles, setAvailableProfiles] = useState([]);
   const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
-  const [dateRequests, setDateRequests] = useState([]);
-  const [pendingRequests, setPendingRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeDate, setActiveDate] = useState(null);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const [hasPendingOutgoingRequest, setHasPendingOutgoingRequest] = useState(false);
   const [lastRequestedProfile, setLastRequestedProfile] = useState(null);
   const [userInterests, setUserInterests] = useState(new Set());
@@ -321,8 +322,18 @@ export default function Matches() {
     });
   };
 
-  const handleProposeDate = (profile) => {
-    // Prevent proposing if already have pending request
+  const handleProposeDate = async (profile) => {
+    // Check if user already has an active or accepted date
+    const hasActiveDate = dateRequests.some(
+      request => (request.status === 'active' || request.status === 'accepted') && !request.completedAt
+    );
+
+    if (hasActiveDate) {
+      toast.error('Please complete your current date before starting a new one');
+      return;
+    }
+
+    // Check for pending outgoing request
     if (hasPendingOutgoingRequest) {
       toast.error('You already have a pending date request');
       return;
@@ -335,7 +346,7 @@ export default function Matches() {
       return;
     }
 
-    // Set state for pending request UI immediately
+    // Set state for pending request UI
     setLastRequestedProfile(profile);
     setHasPendingOutgoingRequest(true);
     setCurrentView('discovery');
@@ -356,41 +367,48 @@ export default function Matches() {
       return [...relevantEvents, ...nonRelevantEvents];
     });
 
-    // Navigate to date planning with complete profile data
+    // Navigate to date planning
+    const profileData = {
+      id: profile.id,
+      basicInfo: profile.basicInfo,
+      photo: profile.photo,
+      availability: profile.availability,
+      activities: profile.activities,
+      location: profile.basicInfo.location
+    };
+
     navigate('/date-planning/new', {
       state: {
-        profile: {
-          id: profile.id,
-          basicInfo: profile.basicInfo,
-          photo: profile.photo,
-          availability: profile.availability,
-          activities: profile.activities,
-          location: profile.basicInfo.location
-        },
+        profile: profileData,
         returnTo: '/matches'
-      }
+      },
+      replace: true
     });
   };
 
   const handleViewRequest = (request) => {
     const profile = SAMPLE_PROFILES.find(p => p.id === request.senderId);
-      if (!profile) {
+    if (!profile) {
       toast.error('Profile not found');
       return;
     }
 
+    const profileData = {
+      id: profile.id,
+      basicInfo: profile.basicInfo,
+      photo: profile.photo,
+      availability: profile.availability,
+      activities: profile.activities,
+      location: profile.basicInfo.location
+    };
+
     navigate('/date-planning/new', {
       state: {
-        profile: {
-          id: profile.id,
-          basicInfo: profile.basicInfo,
-          photo: profile.photo,
-          availability: profile.availability,
-          activities: profile.activities
-        },
+        profile: profileData,
         requestId: request.id,
         returnTo: '/matches'
-      }
+      },
+      replace: true
     });
   };
 
@@ -403,38 +421,26 @@ export default function Matches() {
     });
   };
 
-  const handleEventInterest = (event, e) => {
-    e.stopPropagation();
-    const newInterests = new Set(userInterests);
-    
-    if (newInterests.has(event.title)) {
-      newInterests.delete(event.title);
-      toast.success(`We'll stop sending you updates about ${event.title}`);
-    } else {
-      newInterests.add(event.title);
-      
-      // Show achievement toast for first interaction
-      if (newInterests.size === 1) {
-        toast.success('🎉 Achievement Unlocked: Social Explorer!', {
-          duration: 3000,
-          icon: '🌟'
-        });
+  const handleEventInterest = async (eventId) => {
+    try {
+      // Find the event
+      const event = events.find(e => e.id === eventId);
+      if (!event) {
+        toast.error('Event not found');
+        return;
       }
-      
-      // Show connection potential
-      const potentialConnections = Math.min(event.attendees, 3);
-      toast.success(
-        <div className="space-y-2">
-          <div>You're interested in {event.title}!</div>
-          <div className="text-sm text-gray-600">
-            {potentialConnections} people with similar interests are going
-          </div>
-        </div>,
-        { duration: 4000 }
-      );
+
+      // Add to user's interested events
+      const userRef = doc(db, 'users', currentUser.uid);
+      await updateDoc(userRef, {
+        interestedEvents: arrayUnion(eventId)
+      });
+
+      toast.success(`Added ${event.title} to your interested events!`);
+    } catch (error) {
+      console.error('Error marking event interest:', error);
+      toast.error('Failed to save event interest');
     }
-    
-    setUserInterests(newInterests);
   };
 
   const handleAcceptRequest = async (request) => {
@@ -546,7 +552,7 @@ export default function Matches() {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleEventInterest(event, e);
+                handleEventInterest(event.id);
               }}
               className={`px-3 py-1 rounded-full text-sm ${
                 userInterests.has(event.title)
@@ -585,87 +591,226 @@ export default function Matches() {
     );
   };
 
-  const renderAcceptedDateDetails = ({ request }) => {
-    const otherUserId = request.senderId === currentUser.uid ? request.recipientId : request.senderId;
-    const otherUser = SAMPLE_PROFILES.find(p => p.id === otherUserId);
+  const renderActiveDateDetails = ({ request }) => {
+    const otherUser = request.senderId === currentUser.uid ? 
+      SAMPLE_PROFILES.find(p => p.id === request.recipientId) :
+      SAMPLE_PROFILES.find(p => p.id === request.senderId);
     
+    if (!otherUser) return null;
+
     return (
-      <div className="bg-white rounded-xl shadow-sm p-6 space-y-6">
-        <div className="flex items-center gap-4">
-          <img
-            src={otherUser?.photo}
-            alt={otherUser?.basicInfo.name}
-            className="w-16 h-16 rounded-full object-cover"
-          />
-          <div>
-            <h3 className="text-lg font-semibold">{otherUser?.basicInfo.name}</h3>
-            <p className="text-gray-600">{otherUser?.basicInfo.location}</p>
-          </div>
-        </div>
-
-        <div className="border-t border-b border-gray-100 py-4">
-          <h4 className="font-medium mb-2">Date Details</h4>
-          <div className="space-y-1 text-gray-600">
-            <p>Activity: {request.dateDetails?.activity}</p>
-            <p>When: {request.dateDetails?.day} at {request.dateDetails?.time}</p>
-            <p>Where: {request.dateDetails?.venue}</p>
-          </div>
-        </div>
-
-        {/* Verification Code Section */}
-        <div className="space-y-4">
-          {request.status === 'accepted' && (
-            <div className="text-center">
-              {request.verificationStartedBy === currentUser.uid ? (
-                <div className="space-y-4">
-                  <div className="text-4xl font-mono font-bold tracking-wider bg-rose-50 text-rose-600 p-4 rounded-lg inline-block">
-                    {request.preVerificationCode}
-                  </div>
-                  <p className="text-gray-600">Show this code to {otherUser?.basicInfo.name}</p>
-                </div>
-              ) : request.verificationStartedBy ? (
-                <div className="space-y-4">
-                  <input
-                    type="text"
-                    maxLength="4"
-                    placeholder="Enter 4-digit code"
-                    value={confirmationCode}
-                    onChange={(e) => setConfirmationCode(e.target.value.replace(/\D/g, ''))}
-                    className="text-center text-4xl font-mono tracking-wider w-40 p-4 border-2 border-gray-200 rounded-lg focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
-                  />
-                  <p className="text-gray-600">Enter the code shown by {otherUser?.basicInfo.name}</p>
-                  <button
-                    onClick={() => handleVerifyCode(request.id)}
-                    disabled={confirmationCode.length !== 4}
-                    className="px-6 py-2 bg-rose-500 text-white rounded-lg disabled:opacity-50"
-                  >
-                    Verify Code
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <button
-                    onClick={() => handleStartVerification(request.id)}
-                    className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors"
-                  >
-                    Start Verification
-                  </button>
-                  <p className="text-sm text-gray-500">Generate a code to verify you met</p>
-                </div>
-              )}
+      <div className="space-y-6">
+        {/* Profile and Status */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <img
+              src={otherUser.photo}
+              alt={otherUser.basicInfo.name}
+              className="w-16 h-16 rounded-full object-cover"
+            />
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900">
+                {otherUser.basicInfo.name}
+              </h3>
+              <p className="text-gray-600">{otherUser.basicInfo.location}</p>
             </div>
-          )}
+          </div>
+          <div className="bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium">
+            Active Date
+          </div>
+        </div>
+
+        {/* Date Details Card */}
+        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+          <h4 className="font-medium text-gray-900">Date Details</h4>
+          <div className="space-y-2 text-gray-700">
+            {request.dateDetails?.activity && (
+              <p className="flex items-center">
+                <span className="w-24 text-gray-500">Activity:</span>
+                <span className="font-medium">{request.dateDetails.activity}</span>
+              </p>
+            )}
+            <p className="flex items-center">
+              <span className="w-24 text-gray-500">When:</span>
+              <span className="font-medium">
+                {request.dateDetails?.day} at {request.dateDetails?.time}
+              </span>
+            </p>
+            {request.dateDetails?.venue && (
+              <p className="flex items-center">
+                <span className="w-24 text-gray-500">Where:</span>
+                <span className="font-medium">{request.dateDetails.venue}</span>
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Events Section */}
         <div className="space-y-4">
-          <h4 className="font-medium">Suggested Events</h4>
+          <div className="flex items-center justify-between">
+            <h4 className="text-lg font-semibold text-gray-900">Events You Might Both Enjoy</h4>
+          </div>
           <div className="grid grid-cols-1 gap-4">
-            {events.slice(0, 3).map(event => (
-              <div key={event.id} className="border border-gray-100 rounded-lg p-4">
-                <h5 className="font-medium">{event.title}</h5>
-                <p className="text-gray-600 text-sm">{event.date} at {event.time}</p>
-                <p className="text-gray-600 text-sm">{event.location}</p>
+            {events.slice(0, 3).map((event, index) => (
+              <div 
+                key={`event-${index}`}
+                className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:border-rose-200 transition-colors"
+              >
+                <div className="flex items-center space-x-4 p-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-16 h-16 bg-rose-100 rounded-lg flex items-center justify-center text-2xl">
+                      {event.emoji || '🎉'}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h5 className="text-base font-medium text-gray-900 truncate">{event.title}</h5>
+                    <p className="text-sm text-gray-500">{event.date} at {event.time}</p>
+                    <p className="text-sm text-gray-500">{event.location}</p>
+                  </div>
+                  <button
+                    onClick={() => handleEventInterest(event.id)}
+                    className="flex-shrink-0 bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-sm transition-colors"
+                  >
+                    I'm Interested
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Complete Date Button */}
+        <div className="border-t pt-6">
+          <button
+            onClick={() => handleDateComplete(request.id)}
+            className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 
+                     transition-colors font-medium flex items-center justify-center space-x-2"
+          >
+            <span>Mark Date as Complete</span>
+          </button>
+          <p className="text-sm text-gray-500 text-center mt-3">
+            Complete this date to see new matches and requests
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAcceptedDateDetails = ({ request }) => {
+    const otherUser = SAMPLE_PROFILES.find(p => p.id === (request.senderId === currentUser.uid ? request.recipientId : request.senderId));
+    
+    return (
+      <div className="space-y-6">
+        {/* Profile and Date Details */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <img
+              src={otherUser?.photo}
+              alt={otherUser?.basicInfo.name}
+              className="w-16 h-16 rounded-full object-cover"
+            />
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900">{otherUser?.basicInfo.name}</h3>
+              <p className="text-gray-600">{otherUser?.basicInfo.location}</p>
+            </div>
+          </div>
+          <div className="bg-rose-100 text-rose-800 px-4 py-2 rounded-full text-sm font-medium">
+            Upcoming Date
+          </div>
+        </div>
+
+        {/* Date Details Card */}
+        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+          <h4 className="font-medium text-gray-900">Date Details</h4>
+          <div className="space-y-2 text-gray-700">
+            <p className="flex items-center">
+              <span className="w-24 text-gray-500">Activity:</span>
+              <span className="font-medium">{request.dateDetails?.activity}</span>
+            </p>
+            <p className="flex items-center">
+              <span className="w-24 text-gray-500">When:</span>
+              <span className="font-medium">{request.dateDetails?.day} at {request.dateDetails?.time}</span>
+            </p>
+            <p className="flex items-center">
+              <span className="w-24 text-gray-500">Where:</span>
+              <span className="font-medium">{request.dateDetails?.venue}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Verification Code Section */}
+        <div className="bg-white rounded-lg p-6 border border-gray-100">
+          <div className="text-center space-y-4">
+            {request.verificationStartedBy === currentUser.uid ? (
+              <div key="verification-code" className="space-y-4">
+                <div className="text-4xl font-mono font-bold tracking-wider bg-rose-50 text-rose-600 p-4 rounded-lg inline-block">
+                  {request.preVerificationCode}
+                </div>
+                <p className="text-gray-600">Show this code to {otherUser?.basicInfo.name}</p>
+              </div>
+            ) : request.verificationStartedBy ? (
+              <div key="verification-input" className="space-y-4">
+                <input
+                  type="text"
+                  maxLength="4"
+                  placeholder="Enter 4-digit code"
+                  value={confirmationCode}
+                  onChange={(e) => setConfirmationCode(e.target.value.replace(/\D/g, ''))}
+                  className="text-center text-4xl font-mono tracking-wider w-40 p-4 border-2 border-gray-200 rounded-lg focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                />
+                <p className="text-gray-600">Enter the code shown by {otherUser?.basicInfo.name}</p>
+                <button
+                  onClick={() => handleVerifyCode(request.id)}
+                  disabled={confirmationCode.length !== 4}
+                  className="px-6 py-2 bg-rose-500 text-white rounded-lg disabled:opacity-50"
+                >
+                  Verify Code
+                </button>
+              </div>
+            ) : (
+              <div key="verification-start" className="space-y-4">
+                <button
+                  onClick={() => handleStartVerification(request.id)}
+                  className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors"
+                >
+                  Start Verification
+                </button>
+                <p className="text-sm text-gray-500">Generate a code to verify you met</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Events Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="text-lg font-semibold text-gray-900">Events You Might Both Enjoy</h4>
+            <span className="text-sm text-gray-500">Based on shared interests</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            {events.slice(0, 3).map((event, index) => (
+              <div 
+                key={`event-${index}`}
+                className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:border-rose-200 transition-colors"
+              >
+                <div className="flex items-center space-x-4 p-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-16 h-16 bg-rose-100 rounded-lg flex items-center justify-center text-2xl">
+                      {event.emoji || '🎉'}
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h5 className="text-base font-medium text-gray-900 truncate">{event.title}</h5>
+                    <p className="text-sm text-gray-500">{event.date} at {event.time}</p>
+                    <p className="text-sm text-gray-500">{event.location}</p>
+                  </div>
+                  <button
+                    onClick={() => handleEventInterest(event.id)}
+                    className="flex-shrink-0 bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-sm transition-colors"
+                  >
+                    I'm Interested
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -752,38 +897,47 @@ export default function Matches() {
   };
 
   const handleVerifyCode = async (requestId) => {
-    if (!confirmationCode || confirmationCode.length !== 4) {
-      toast.error('Please enter a valid 4-digit code');
-      return;
-    }
-
     try {
       const requestRef = doc(db, 'dateRequests', requestId);
       const requestDoc = await getDoc(requestRef);
       
       if (!requestDoc.exists()) {
         toast.error('Date request not found');
+          return;
+      }
+
+      const request = requestDoc.data();
+      
+      if (request.preVerificationCode !== confirmationCode) {
+        toast.error('Incorrect verification code');
+        setConfirmationCode('');
         return;
       }
 
-      const requestData = requestDoc.data();
-      
-      if (requestData.preVerificationCode === confirmationCode) {
-        await updateDoc(requestRef, {
-          status: 'completed',
-          completedAt: serverTimestamp(),
-          preVerificationCode: null,
-          verificationStartedBy: null,
-          lastUpdated: serverTimestamp()
-        });
+      // Update the request status to 'active' instead of 'confirmed'
+      await updateDoc(requestRef, {
+        status: 'active',
+        verifiedAt: serverTimestamp(),
+        lastUpdated: serverTimestamp()
+      });
 
-        setConfirmationCode('');
-        toast.success('Date verified! Have a great time!');
-        navigate('/');
-      } else {
-        toast.error('Incorrect code. Please try again.');
-        setConfirmationCode('');
-      }
+      // Update local state
+      setDateRequests(prev => prev.map(req => {
+        if (req.id === requestId) {
+          return {
+            ...req,
+            status: 'active',
+            verifiedAt: new Date(),
+            lastUpdated: new Date()
+          };
+        }
+        return req;
+      }));
+
+      toast.success('Date verified! Have a great time!');
+      setConfirmationCode('');
+      
+      // Don't navigate away, let the UI update to show the active date screen
     } catch (error) {
       console.error('Error verifying code:', error);
       toast.error('Failed to verify code');
@@ -861,6 +1015,25 @@ export default function Matches() {
   );
 
   const renderDiscoveryView = () => {
+    // Check if there's an active date request
+    const activeRequest = dateRequests.find(r => r.status === 'active');
+    
+    if (activeRequest) {
+      return (
+        <motion.div
+          key="active-date"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="space-y-6"
+        >
+          <div className="bg-white rounded-xl shadow-sm p-6">
+            {renderActiveDateDetails({ request: activeRequest })}
+          </div>
+        </motion.div>
+      );
+    }
+
     // Check if there's an accepted date request
     const acceptedRequest = dateRequests.find(r => r.status === 'accepted');
     
@@ -899,15 +1072,15 @@ export default function Matches() {
 
     // Show regular discovery view
     if (!availableProfiles.length) {
-      return (
+    return (
         <div className="text-center py-12 bg-white rounded-xl shadow-sm">
           <p className="text-gray-600">No more profiles available</p>
           <p className="text-sm text-gray-500 mt-2">
             Check back later for new potential matches
           </p>
-        </div>
-      );
-    }
+      </div>
+    );
+  }
 
     const currentProfile = availableProfiles[currentProfileIndex];
     return (
@@ -926,155 +1099,99 @@ export default function Matches() {
     );
   };
 
-  useEffect(() => {
-    if (!currentUser) {
-      navigate('/signin');
-      return;
-    }
+  // Fetch date requests and update state
+  const fetchDateRequests = useCallback(() => {
+    if (!currentUser) return;
 
-    const checkExistingRequests = async () => {
-      const sentRequestsQuery = query(
-        collection(db, 'dateRequests'),
-        where('senderId', '==', currentUser.uid)
-      );
-
-      const receivedRequestsQuery = query(
-        collection(db, 'dateRequests'),
-        where('recipientId', '==', currentUser.uid)
-      );
-
-      const unsubscribeSent = onSnapshot(sentRequestsQuery, (snapshot) => {
-        handleRequestsSnapshot(snapshot, 'sent');
-      });
-
-      const unsubscribeReceived = onSnapshot(receivedRequestsQuery, (snapshot) => {
-        handleRequestsSnapshot(snapshot, 'received');
-      });
-
-      return () => {
-        unsubscribeSent();
-        unsubscribeReceived();
-      };
-    };
-
-    const handleRequestsSnapshot = (snapshot, type) => {
-      const requests = new Map();
-      let hasAcceptedInvite = false;
-      let acceptedInviteData = null;
-      let hasPendingOutgoing = false;
-      let hasPendingIncoming = false;
-      let lastRequested = null;
+    try {
+      setIsLoading(true);
       
-      snapshot.forEach((doc) => {
-        const request = { id: doc.id, ...doc.data() };
-        requests.set(doc.id, request);
+      // Query for all date requests involving the current user
+      const requestsQuery = query(
+        collection(db, 'dateRequests'),
+        where('participants', 'array-contains', currentUser.uid)
+      );
 
-        // Check for accepted, pre_verification, or pending confirmation invites
-        if (request.status === 'accepted' || 
-            request.status === 'pre_verification' || 
-            request.status === 'pending_confirmation') {
-          hasAcceptedInvite = true;
-          acceptedInviteData = request;
+      // Create the listener
+      const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+        const requests = [];
+        const pending = [];
+        let hasActiveOrAcceptedDate = false;
+
+        for (const doc of snapshot.docs) {
+          const request = { id: doc.id, ...doc.data() };
+          requests.push(request);
           
-          const otherUserId = request.senderId === currentUser.uid ? request.recipientId : request.senderId;
-          const otherProfile = SAMPLE_PROFILES.find(p => p.id === otherUserId);
-          
-          if (otherProfile) {
-            const sharedActivities = otherProfile.activities || [];
-            const relevantEvents = events.filter(event => 
-              sharedActivities.some(activity => 
-                event.title.toLowerCase().includes(activity.toLowerCase()) || 
-                event.description.toLowerCase().includes(activity.toLowerCase())
-              )
-            );
-            
-            setEvents(prevEvents => {
-              const nonRelevantEvents = prevEvents.filter(e => 
-                !relevantEvents.find(re => re.title === e.title)
-              );
-              return [...relevantEvents, ...nonRelevantEvents];
-            });
+          // Check if user has any active or accepted dates
+          if ((request.status === 'active' || request.status === 'accepted') && !request.completedAt) {
+            hasActiveOrAcceptedDate = true;
+          } else if (request.status === 'pending') {
+            pending.push(request);
           }
         }
-        
-        // Check for pending requests
-        if (request.status === 'pending') {
-          if (type === 'sent') {
-            hasPendingOutgoing = true;
-            const recipientProfile = SAMPLE_PROFILES.find(p => p.id === request.recipientId);
-            if (recipientProfile) {
-              lastRequested = recipientProfile;
-            }
-          } else if (type === 'received') {
-            hasPendingIncoming = true;
-            // If we have incoming requests, switch to requests view
-            setCurrentView('requests');
-          }
+
+        setDateRequests(requests);
+        setPendingRequests(pending);
+
+        // If user has an active/accepted date, clear available profiles
+        if (hasActiveOrAcceptedDate) {
+          setAvailableProfiles([]);
+          setCurrentProfileIndex(0);
+        } else {
+          // Only show profiles if user has no active/accepted dates
+          const unavailableIds = new Set(
+            requests.flatMap(request => [request.senderId, request.recipientId])
+          );
+
+          const filteredProfiles = SAMPLE_PROFILES.filter(profile => 
+            profile.id !== currentUser.uid && 
+            !unavailableIds.has(profile.id)
+          );
+
+          setAvailableProfiles(filteredProfiles);
         }
+
+        setIsLoading(false);
+      }, (error) => {
+        console.error('Error in date requests listener:', error);
+        toast.error('Failed to listen to date requests');
+        setIsLoading(false);
       });
 
-      // Update states based on request status
-      setHasPendingOutgoingRequest(prev => prev || hasPendingOutgoing);
-      if (lastRequested) setLastRequestedProfile(lastRequested);
-      
-      // If there's an accepted invite or pre-verification, both users should see the appropriate screen
-      if (hasAcceptedInvite) {
-        setCurrentView('discovery');
-        setHasPendingOutgoingRequest(true);
-        
-        const otherUserId = acceptedInviteData.senderId === currentUser.uid 
-          ? acceptedInviteData.recipientId 
-          : acceptedInviteData.senderId;
-        const otherProfile = SAMPLE_PROFILES.find(p => p.id === otherUserId);
-        setLastRequestedProfile(otherProfile);
-      }
-
-      // Update state with unique requests
-      setDateRequests(prev => {
-        const newRequests = Array.from(requests.values());
-        const existingIds = new Set(prev.map(r => r.id));
-        const uniqueNewRequests = newRequests.filter(r => !existingIds.has(r.id));
-        return [...prev, ...uniqueNewRequests];
-      });
-      
-      setPendingRequests(prev => {
-        const newPending = Array.from(requests.values()).filter(r => r.status === 'pending');
-        const existingIds = new Set(prev.map(r => r.id));
-        const uniqueNewPending = newPending.filter(r => !existingIds.has(r.id));
-        return [...prev, ...uniqueNewPending];
-      });
-
-      // Show toast for incoming requests
-      if (hasPendingIncoming) {
-        toast.success(
-          <div className="space-y-2">
-            <div className="font-medium">New Date Request!</div>
-            <div className="text-sm">Someone wants to connect with you</div>
-          </div>,
-          { duration: 5000, id: 'incoming-request' }
-        );
-      }
-
-      // Filter available profiles
-      const unavailableProfileIds = new Set(
-        Array.from(requests.values()).flatMap(request => [request.senderId, request.recipientId])
-      );
-      
-      setAvailableProfiles(prev => {
-        const filteredProfiles = SAMPLE_PROFILES.filter(profile => 
-          profile.id !== currentUser.uid && 
-          !unavailableProfileIds.has(profile.id) &&
-          !hasAcceptedInvite // Don't show profiles if there's an accepted invite
-        );
-        return filteredProfiles;
-      });
-      
-      setCurrentProfileIndex(0);
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error setting up date requests listener:', error);
+      toast.error('Failed to load date requests');
       setIsLoading(false);
-    };
+    }
+  }, [currentUser]);
 
-    checkExistingRequests();
-  }, [currentUser, navigate, events]);
+  useEffect(() => {
+    const unsubscribe = fetchDateRequests();
+    
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [fetchDateRequests]);
+
+  const handleDateComplete = async (dateId) => {
+    try {
+      const dateRef = doc(db, 'dateRequests', dateId);
+      await updateDoc(dateRef, {
+        status: 'completed',
+        completedAt: serverTimestamp(),
+        lastUpdated: serverTimestamp()
+      });
+
+      toast.success('Date marked as completed! You can now browse new matches.');
+      setCurrentView('discovery');
+    } catch (error) {
+      console.error('Error completing date:', error);
+      toast.error('Failed to complete date');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -1085,76 +1202,82 @@ export default function Matches() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      {/* Navigation Tabs - Hide when there's an accepted invite */}
-      {!dateRequests.some(r => r.status === 'accepted') && (
-        <div className="flex justify-between items-center mb-6">
-          <div className="flex space-x-4">
-            <button
-              onClick={() => setCurrentView('discovery')}
-              className={`px-4 py-2 rounded-lg ${
-                currentView === 'discovery'
-                  ? 'bg-rose-500 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              Discovery
-            </button>
-            <button
-              onClick={() => setCurrentView('requests')}
-              className={`px-4 py-2 rounded-lg relative ${
-                currentView === 'requests'
-                  ? 'bg-rose-500 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              Requests
-              {pendingRequests.some(r => r.recipientId === currentUser.uid) && (
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full" />
-              )}
-            </button>
-            <button
-              onClick={() => setCurrentView('dates')}
-              className={`px-4 py-2 rounded-lg ${
-                currentView === 'dates'
-                  ? 'bg-rose-500 text-white'
-                  : 'text-gray-600 hover:bg-gray-100'
-              }`}
-            >
-              Dates
-            </button>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        {/* Navigation */}
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">
+              {activeDate ? 'Active Date' : 'Find Matches'}
+            </h1>
+            
+            {/* Only show navigation tabs if there's no active or accepted date */}
+            {!dateRequests.some(r => (r.status === 'active' || r.status === 'accepted') && !r.completedAt) && (
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setCurrentView('discovery')}
+                  className={`px-4 py-2 rounded-lg ${
+                    currentView === 'discovery'
+                      ? 'bg-rose-500 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Discovery
+                </button>
+                <button
+                  onClick={() => setCurrentView('requests')}
+                  className={`px-4 py-2 rounded-lg relative ${
+                    currentView === 'requests'
+                      ? 'bg-rose-500 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Requests
+                  {pendingRequests.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full" />
+                  )}
+                </button>
+                <button
+                  onClick={() => setCurrentView('dates')}
+                  className={`px-4 py-2 rounded-lg ${
+                    currentView === 'dates'
+                      ? 'bg-rose-500 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  Dates
+                </button>
+              </div>
+            )}
           </div>
-            </div>
+        </div>
+          
+        {/* Main Content */}
+        <AnimatePresence mode="wait">
+          {/* If there's an active or accepted date, show only that */}
+          {dateRequests.some(r => (r.status === 'active' || r.status === 'accepted') && !r.completedAt) ? (
+            <motion.div
+              key="active-or-accepted-date"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="bg-white rounded-xl shadow-sm p-6"
+            >
+              {dateRequests.find(r => r.status === 'active' && !r.completedAt) ? (
+                renderActiveDateDetails({ request: dateRequests.find(r => r.status === 'active' && !r.completedAt) })
+              ) : (
+                renderAcceptedDateDetails({ request: dateRequests.find(r => r.status === 'accepted' && !r.completedAt) })
+              )}
+            </motion.div>
+          ) : (
+            <>
+              {currentView === 'discovery' && renderDiscoveryView()}
+              {currentView === 'requests' && renderRequestsView()}
+              {currentView === 'dates' && renderDatesView()}
+            </>
           )}
-
-      {/* Main Content */}
-      <div className="relative">
-        {/* Always show discovery view when there's an accepted invite */}
-        {dateRequests.some(r => r.status === 'accepted') ? (
-          renderDiscoveryView()
-        ) : (
-          <>
-            {currentView === 'discovery' && renderDiscoveryView()}
-            {currentView === 'requests' && renderRequestsView()}
-            {currentView === 'dates' && renderDatesView()}
-          </>
-        )}
+        </AnimatePresence>
       </div>
-
-      {/* Overlay for expanded event card */}
-      <AnimatePresence>
-        {expandedEvent && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-40"
-            onClick={() => setExpandedEvent(null)}
-          >
-            {renderEventCard(expandedEvent, 0, true)}
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 } 

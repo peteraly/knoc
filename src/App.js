@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './components/Home';
 import Profile from './components/Profile';
 import Login from './components/Login';
@@ -47,6 +47,10 @@ function App() {
               } 
             />
             <Route 
+              path="/account" 
+              element={<Navigate to="/profile" replace />} 
+            />
+            <Route 
               path="/onboarding" 
               element={
                 <PrivateRoute>
@@ -75,6 +79,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <DatePlanning />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/date-planning/new" 
+              element={
+                <PrivateRoute>
+                  <DatePlanning isNewDate={true} />
                 </PrivateRoute>
               } 
             />

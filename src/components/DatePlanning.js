@@ -96,12 +96,12 @@ const SAMPLE_VENUES = [
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-export default function DatePlanning() {
+export default function DatePlanning({ isNewDate = false }) {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const profile = location.state?.profile || null;
-  const returnTo = location.state?.returnTo || '/discovery';
+  const profile = location.state?.profile;
+  const returnTo = location.state?.returnTo || '/matches';
   const [currentStep, setCurrentStep] = useState(STEPS.SELECT_TIME);
   const [selectedDay, setSelectedDay] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
@@ -150,12 +150,17 @@ export default function DatePlanning() {
   }, [profile?.availability, currentUserAvailability]);
 
   useEffect(() => {
-    console.log('DatePlanning mounted with profile:', profile);
+    console.log('DatePlanning mounted with:', { 
+      isNewDate, 
+      profile, 
+      state: location.state 
+    });
     
-    if (!profile) {
-      console.error('No profile data provided');
-      toast.error('Missing profile data');
-      navigate(returnTo);
+    // Redirect if no profile data is provided
+    if (!profile || !profile.id || !profile.basicInfo || !profile.availability) {
+      console.error('Invalid or missing profile data:', profile);
+      toast.error('Please select a profile to plan a date with');
+      navigate(returnTo, { replace: true });
       return;
     }
 
@@ -170,12 +175,12 @@ export default function DatePlanning() {
         } else {
           console.error('Current user document not found');
           toast.error('Failed to load your availability');
-          navigate(returnTo);
+          navigate(returnTo, { replace: true });
         }
       } catch (error) {
         console.error('Error fetching current user availability:', error);
         toast.error('Failed to load your availability');
-        navigate(returnTo);
+        navigate(returnTo, { replace: true });
       }
     };
 
@@ -214,7 +219,7 @@ export default function DatePlanning() {
     }
 
     setLoading(false);
-  }, [profile, location.state?.requestId, currentUser?.uid, navigate, returnTo]);
+  }, [profile, location.state?.requestId, currentUser?.uid, navigate, returnTo, isNewDate]);
 
   // Update overlapping slots when availability changes
   useEffect(() => {
@@ -267,8 +272,12 @@ export default function DatePlanning() {
           day: selectedDay,
           time: selectedTime,
           activity: selectedActivity,
-          venue: selectedVenue?.id === 'custom' ? customVenue : selectedVenue?.name,
-          message: message.trim()
+          // Only include venue if it's set
+          ...(selectedVenue && {
+            venue: selectedVenue.id === 'custom' ? customVenue : selectedVenue.name
+          }),
+          // Only include message if it's not empty
+          ...(message.trim() && { message: message.trim() })
         },
         createdAt: serverTimestamp(),
         lastUpdated: serverTimestamp()
@@ -294,7 +303,7 @@ export default function DatePlanning() {
       navigate(returnTo);
     } catch (error) {
       console.error('Error creating date request:', error);
-      toast.error('Failed to send date request');
+      toast.error('Failed to send date request. Please try again.');
     } finally {
       setLoading(false);
     }
