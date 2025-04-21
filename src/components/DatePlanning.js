@@ -134,15 +134,13 @@ export default function DatePlanning({ isNewDate = false }) {
     latitude: DEFAULT_COORDINATES[1],
     zoom: 12
   });
-  const [popupInfo, setPopupInfo] = useState(null);
-  const [viewport, setViewport] = useState({
-    longitude: DEFAULT_COORDINATES[0],
-    latitude: DEFAULT_COORDINATES[1],
-    zoom: 12
-  });
   const [searchQuery, setSearchQuery] = useState('');
   const [venues, setVenues] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [addressInput, setAddressInput] = useState('');
+  const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // Calculate overlapping availability using useMemo
   const calculateOverlappingSlots = useMemo(() => {
@@ -288,7 +286,7 @@ export default function DatePlanning({ isNewDate = false }) {
       const response = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?` +
         `access_token=${MAPBOX_TOKEN}&` +
-        `proximity=${viewport.longitude},${viewport.latitude}&` +
+        `proximity=${viewState.longitude},${viewState.latitude}&` +
         `types=poi&limit=5`
       );
       
@@ -319,6 +317,78 @@ export default function DatePlanning({ isNewDate = false }) {
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  // Function to fetch address suggestions
+  const fetchSuggestions = async (query) => {
+    if (!query.trim() || query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?` +
+        `access_token=${MAPBOX_TOKEN}&` +
+        `types=place,address,poi,neighborhood&` +
+        `proximity=${viewState.longitude},${viewState.latitude}&` +
+        `limit=5`
+      );
+      const data = await response.json();
+      
+      const formattedSuggestions = data.features.map(feature => ({
+        id: feature.id,
+        text: feature.text,
+        place_name: feature.place_name,
+        type: feature.place_type[0],
+        coordinates: feature.center
+      }));
+      
+      setSuggestions(formattedSuggestions);
+      setShowSuggestions(true);
+    } catch (error) {
+      console.error('Error fetching suggestions:', error);
+      setSuggestions([]);
+    }
+  };
+
+  // Debounce suggestions fetch
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchSuggestions(addressInput);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [addressInput]);
+
+  // Handle suggestion selection
+  const handleSuggestionSelect = (suggestion) => {
+    const [longitude, latitude] = suggestion.coordinates;
+    
+    setViewState({
+      longitude,
+      latitude,
+      zoom: 14
+    });
+    
+    setSelectedLocation({
+      longitude,
+      latitude,
+      address: suggestion.place_name
+    });
+    
+    setAddressInput(suggestion.place_name);
+    setShowSuggestions(false);
+  };
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowSuggestions(false);
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   // Handle map click to set location
   const handleMapClick = (event) => {
@@ -351,9 +421,9 @@ export default function DatePlanning({ isNewDate = false }) {
     return (
       <div className="h-[calc(100vh-280px)] w-full relative rounded-lg overflow-hidden">
         <Map
-          {...viewport}
+          {...viewState}
           mapboxAccessToken={MAPBOX_TOKEN}
-          onMove={evt => setViewport(evt.viewState)}
+          onMove={evt => setViewState(evt.viewState)}
           onClick={handleMapClick}
           style={{width: '100%', height: '100%'}}
           mapStyle="mapbox://styles/mapbox/streets-v12"
@@ -376,20 +446,222 @@ export default function DatePlanning({ isNewDate = false }) {
     );
   };
 
+  // Function to get current location
+  const getCurrentLocation = () => {
+    setIsLoadingLocation(true);
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser');
+      setIsLoadingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          // Reverse geocode to get address
+          const response = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${MAPBOX_TOKEN}`
+          );
+          const data = await response.json();
+          const address = data.features[0]?.place_name || 'Location found';
+          
+          setViewState({
+            longitude,
+            latitude,
+            zoom: 14
+          });
+          setSelectedLocation({ longitude, latitude, address });
+          setAddressInput(address);
+        } catch (error) {
+          console.error('Error getting location details:', error);
+          toast.error('Failed to get location details');
+        } finally {
+          setIsLoadingLocation(false);
+        }
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        toast.error('Failed to get your location');
+        setIsLoadingLocation(false);
+      }
+    );
+  };
+
+  // Function to search address or zip code
+  const searchAddress = async (address) => {
+    if (!address.trim()) return;
+    
+    setIsSearching(true);
+    try {
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${MAPBOX_TOKEN}`
+      );
+      const data = await response.json();
+      
+      if (data.features && data.features.length > 0) {
+        const location = data.features[0];
+        const [longitude, latitude] = location.center;
+        
+        setViewState({
+          longitude,
+          latitude,
+          zoom: 14
+        });
+        setSelectedLocation({
+          longitude,
+          latitude,
+          address: location.place_name
+        });
+        setAddressInput(location.place_name);
+      } else {
+        toast.error('No results found for this address');
+      }
+    } catch (error) {
+      console.error('Error searching address:', error);
+      toast.error('Failed to search address');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   const renderLocationStep = () => (
     <div className="space-y-6">
-      <div className="bg-white rounded-lg p-4 shadow-sm">
-        <h3 className="text-lg font-semibold mb-4">Select Location</h3>
-        <p className="text-gray-600 mb-4">Click anywhere on the map to select your date location</p>
-        {renderMap()}
+      <h2 className="text-2xl font-bold text-gray-900">Select Location</h2>
+      <p className="text-gray-600">Choose how you want to set the location</p>
+
+      {/* Location Input Options */}
+      <div className="space-y-4">
+        {/* Current Location Button */}
+        <button
+          onClick={getCurrentLocation}
+          disabled={isLoadingLocation}
+          className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500"
+        >
+          {isLoadingLocation ? (
+            <span className="flex items-center">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Getting your location...
+            </span>
+          ) : (
+            <>
+              <svg className="mr-2 h-5 w-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Use Current Location
+            </>
+          )}
+        </button>
+
+        {/* Address/Zip Search with Autocomplete */}
+        <div className="relative">
+          <div className="flex space-x-2">
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={addressInput}
+                onChange={(e) => {
+                  setAddressInput(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (suggestions.length > 0) {
+                      handleSuggestionSelect(suggestions[0]);
+                    } else {
+                      searchAddress(addressInput);
+                    }
+                  }
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (suggestions.length > 0) {
+                    setShowSuggestions(true);
+                  }
+                }}
+                placeholder="Search for address, restaurant, or neighborhood"
+                className="w-full px-3 py-2 rounded-md border border-gray-300 shadow-sm focus:outline-none focus:ring-rose-500 focus:border-rose-500 sm:text-sm"
+              />
+              
+              {/* Suggestions Dropdown */}
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg border border-gray-200">
+                  {suggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSuggestionSelect(suggestion);
+                      }}
+                      className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center space-x-2"
+                    >
+                      <span className="text-gray-400 text-sm">
+                        {suggestion.type === 'poi' ? '🏢' :
+                         suggestion.type === 'address' ? '📍' :
+                         suggestion.type === 'neighborhood' ? '🏘️' : '📌'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{suggestion.text}</p>
+                        <p className="text-xs text-gray-500 truncate">{suggestion.place_name}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => searchAddress(addressInput)}
+              disabled={isSearching || !addressInput.trim()}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 disabled:opacity-50"
+            >
+              {isSearching ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Searching...
+                </span>
+              ) : 'Search'}
+            </button>
+          </div>
+        </div>
+
+        {/* Map Container */}
+        <div className="h-[400px] rounded-lg overflow-hidden shadow-md border border-gray-200">
+          {renderMap()}
+        </div>
+
+        {/* Selected Location Display */}
         {selectedLocation && (
-          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-            <h4 className="font-medium text-gray-900">Selected Location</h4>
-            <p className="text-gray-600">
-              {selectedVenue ? selectedVenue.name : 'Custom Location'}
-            </p>
+          <div className="mt-4 p-4 bg-gray-50 rounded-md border border-gray-200">
+            <h3 className="text-sm font-medium text-gray-900">Selected Location</h3>
+            <p className="mt-1 text-sm text-gray-600">{selectedLocation.address}</p>
           </div>
         )}
+      </div>
+
+      {/* Navigation Buttons */}
+      <div className="flex justify-between mt-8">
+        <button
+          onClick={handleBack}
+          className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500"
+        >
+          Back
+        </button>
+        <button
+          onClick={handleNext}
+          disabled={!selectedLocation}
+          className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-rose-600 hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500 disabled:opacity-50"
+        >
+          Next
+        </button>
       </div>
     </div>
   );
