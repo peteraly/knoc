@@ -1,7 +1,16 @@
 import mapboxgl from 'mapbox-gl';
 
-// Initialize Mapbox
-mapboxgl.accessToken = process.env.REACT_APP_MAPBOX_ACCESS_TOKEN;
+// Get the Mapbox token from environment variables
+const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
+
+// Validate token format
+const isValidToken = MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith('pk.');
+if (!isValidToken) {
+  console.error('Invalid or missing Mapbox token. Please check your .env file and ensure you are using a public token (pk.*)');
+}
+
+// Set the token for mapboxgl
+mapboxgl.accessToken = MAPBOX_TOKEN;
 
 // Helper function to get midpoint between two locations
 function getMidpoint(lat1, lng1, lat2, lng2) {
@@ -11,25 +20,30 @@ function getMidpoint(lat1, lng1, lat2, lng2) {
   };
 }
 
-// Helper function to get venue type based on preferences
-function getVenueTypes(preferences) {
-  const typeMap = {
-    'Coffee Shop': ['cafe', 'coffee'],
-    'Park Walk': ['park'],
-    'Museum': ['museum'],
-    'Bookstore': ['book_store'],
-    'Art Gallery': ['art_gallery'],
-    'Garden': ['park', 'garden']
+// Helper function to get venue types based on activity preferences
+function getVenueTypes(activityPreferences) {
+  const venueMap = {
+    'coffee': ['cafe', 'coffee shop'],
+    'dining': ['restaurant', 'bistro'],
+    'walks': ['park', 'garden', 'trail'],
+    'museums': ['museum', 'gallery', 'exhibition'],
+    'music': ['music venue', 'concert hall'],
+    'books': ['bookstore', 'library'],
+    'fitness': ['gym', 'fitness center', 'yoga studio'],
+    'workshops': ['art studio', 'workshop space']
   };
 
-  return preferences
-    .map(pref => typeMap[pref] || [])
-    .flat()
-    .filter((value, index, self) => self.indexOf(value) === index);
+  return activityPreferences
+    .map(activity => venueMap[activity] || [activity])
+    .flat();
 }
 
 // Main function to suggest a date location
 export async function suggestDateLocation(user1, user2) {
+  if (!isValidToken) {
+    throw new Error('Invalid or missing Mapbox token. Please check your .env file.');
+  }
+
   try {
     const midpoint = getMidpoint(
       user1.location.lat,
@@ -45,9 +59,13 @@ export async function suggestDateLocation(user1, user2) {
 
     // Create a Mapbox Geocoding API request
     const query = venueTypes.join(',');
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?proximity=${midpoint.lng},${midpoint.lat}&types=poi&access_token=${mapboxgl.accessToken}`;
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?proximity=${midpoint.lng},${midpoint.lat}&types=poi&access_token=${MAPBOX_TOKEN}`;
 
     const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Mapbox API error: ${response.statusText}`);
+    }
+
     const data = await response.json();
 
     if (data.features && data.features.length > 0) {

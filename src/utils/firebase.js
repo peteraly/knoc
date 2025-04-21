@@ -13,31 +13,54 @@ import {
 } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyAUsT7PNxOaKBjqm8Qg9iQF-o2hfaRW41w",
-  authDomain: "knock-eb7b5.firebaseapp.com",
-  projectId: "knock-eb7b5",
-  storageBucket: "knock-eb7b5.firebasestorage.app",
-  messagingSenderId: "663565453210",
-  appId: "1:663565453210:web:0e4141092a94d4abef5c23",
-  measurementId: "G-1GLJ4CQDLE"
+// Check for required environment variables
+const requiredEnvVars = {
+  REACT_APP_FIREBASE_API_KEY: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyBkkFF0XhNZeWuDmOfEhsgdfX1VBG7WTas",
+  REACT_APP_FIREBASE_AUTH_DOMAIN: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "divercity-dev.firebaseapp.com",
+  REACT_APP_FIREBASE_PROJECT_ID: process.env.REACT_APP_FIREBASE_PROJECT_ID || "divercity-dev",
+  REACT_APP_FIREBASE_STORAGE_BUCKET: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "divercity-dev.appspot.com",
+  REACT_APP_FIREBASE_MESSAGING_SENDER_ID: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "816874969444",
+  REACT_APP_FIREBASE_APP_ID: process.env.REACT_APP_FIREBASE_APP_ID || "1:816874969444:web:5fd53c4dc6f2b78c645dc9"
 };
 
-// Initialize Firebase
-let app;
-try {
-  app = initializeApp(firebaseConfig);
-} catch (error) {
-  if (!/already exists/.test(error.message)) {
-    console.error('Firebase initialization error:', error.stack);
+// In development, we'll use default values
+if (process.env.NODE_ENV === 'development') {
+  console.log('Using development Firebase configuration');
+} else {
+  // Check for missing environment variables in production
+  const missingVars = Object.entries(requiredEnvVars)
+    .filter(([_, value]) => !value)
+    .map(([key]) => key);
+
+  if (missingVars.length > 0) {
+    console.error('Missing required environment variables:', missingVars.join(', '));
+    console.error('Please check your .env file and ensure all required variables are set.');
+    throw new Error('Missing required Firebase configuration. Check console for details.');
   }
-  app = initializeApp(firebaseConfig, 'default');
 }
 
-// Initialize Auth
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyBkkFF0XhNZeWuDmOfEhsgdfX1VBG7WTas",
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "divercity-dev.firebaseapp.com",
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "divercity-dev",
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "divercity-dev.appspot.com",
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "816874969444",
+  appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:816874969444:web:5fd53c4dc6f2b78c645dc9"
+};
+
+console.log('Initializing Firebase with config:', {
+  ...firebaseConfig,
+  apiKey: '********************' // Hide API key in logs
+});
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
 const googleProvider = new GoogleAuthProvider();
+
+// Initialize Auth
 googleProvider.addScope('profile');
 googleProvider.addScope('email');
 googleProvider.setCustomParameters({
@@ -53,23 +76,30 @@ linkedInProvider.setCustomParameters({
   prompt: 'select_account'
 });
 
-// Initialize Firestore with persistence
-const db = getFirestore(app);
-
-// Enable offline persistence
+// Enable offline persistence with error handling
 enableIndexedDbPersistence(db)
+  .then(() => {
+    console.log('Offline persistence enabled successfully');
+  })
   .catch((err) => {
     if (err.code === 'failed-precondition') {
       console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
     } else if (err.code === 'unimplemented') {
-      console.warn('The current browser doesn\'t support persistence.');
+      console.warn('The current browser does not support persistence.');
+    } else {
+      console.error('Error enabling offline persistence:', err);
     }
   });
 
-// Initialize Messaging
-const messaging = getMessaging(app);
-
-console.log('Firebase services initialized successfully');
+// Initialize Messaging with error handling
+let messaging = null;
+try {
+  messaging = getMessaging(app);
+  console.log('Firebase Cloud Messaging initialized successfully');
+} catch (error) {
+  console.warn('Error initializing Firebase Cloud Messaging:', error);
+  console.warn('Push notifications may not be available');
+}
 
 // Function to request notification permission and get FCM token
 export async function requestNotificationPermission() {

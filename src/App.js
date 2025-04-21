@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Home from './components/Home';
 import Profile from './components/Profile';
 import Login from './components/Login';
@@ -13,20 +13,13 @@ import Navigation from './components/Navigation';
 import DevTools from './components/DevTools';
 import Explore from './components/Explore';
 import { AuthProvider } from './contexts/AuthContext';
-
-// Configure Router with future flags
-const router = {
-  future: {
-    v7_startTransition: true,
-    v7_relativeSplatPath: true
-  }
-};
+import Events from './components/Events';
 
 function App() {
   return (
-    <BrowserRouter {...router}>
-      <AuthProvider>
-        <div className="min-h-screen bg-gray-50 pb-16">
+    <div className="min-h-screen bg-gray-50 pb-16">
+      <Router>
+        <AuthProvider>
           <Toaster position="top-center" />
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -35,6 +28,14 @@ function App() {
               element={
                 <PrivateRoute>
                   <Home />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
+              path="/events" 
+              element={
+                <PrivateRoute>
+                  <Events />
                 </PrivateRoute>
               } 
             />
@@ -75,6 +76,14 @@ function App() {
               } 
             />
             <Route 
+              path="/dates" 
+              element={
+                <PrivateRoute>
+                  <Matches currentView="dates" />
+                </PrivateRoute>
+              } 
+            />
+            <Route 
               path="/date-planning" 
               element={
                 <PrivateRoute>
@@ -101,9 +110,9 @@ function App() {
           </Routes>
           <Navigation />
           <DevTools />
-        </div>
-      </AuthProvider>
-    </BrowserRouter>
+        </AuthProvider>
+      </Router>
+    </div>
   );
 }
 

@@ -1,21 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-hot-toast';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { signIn, signInWithGoogle } = useAuth();
+  const { signIn, signInWithGoogle, createTestUser } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Create test user in development mode
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      createTestUser().catch(error => {
+        console.error('Error creating test user:', error);
+      });
+    }
+  }, [createTestUser]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
       setLoading(true);
       await signIn(email, password);
-      navigate('/matches');
+      navigate('/');
     } catch (error) {
       console.error('Login error:', error);
       toast.error('Failed to sign in. Please check your credentials.');
@@ -28,10 +37,28 @@ export default function Login() {
     try {
       setLoading(true);
       await signInWithGoogle();
-      navigate('/matches');
+      navigate('/');
     } catch (error) {
       console.error('Google sign in error:', error);
-      toast.error('Failed to sign in with Google.');
+      toast.error('Failed to sign in with Google');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Development mode helper
+  const handleTestUserSignIn = async () => {
+    if (process.env.NODE_ENV !== 'development') return;
+    
+    try {
+      setLoading(true);
+      setEmail('test@example.com');
+      setPassword('Test123!');
+      await signIn('test@example.com', 'Test123!');
+      navigate('/');
+    } catch (error) {
+      console.error('Test user sign in error:', error);
+      toast.error('Failed to sign in with test account');
     } finally {
       setLoading(false);
     }
@@ -113,7 +140,7 @@ export default function Login() {
               </div>
             </div>
 
-            <div className="mt-6">
+            <div className="mt-6 space-y-2">
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
@@ -128,6 +155,20 @@ export default function Login() {
                 </svg>
                 Sign in with Google
               </button>
+
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  type="button"
+                  onClick={handleTestUserSignIn}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-rose-500"
+                >
+                  <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 10l-2 1m0 0l-2-1m2 1v2.5M20 7l-2 1m2-1l-2-1m2 1v2.5M14 4l-2-1-2 1M4 7l2-1M4 7l2 1M4 7v2.5M12 21l-2-1m2 1l2-1m-2 1v-2.5M6 18l-2-1v-2.5M18 18l2-1v-2.5" />
+                  </svg>
+                  Use Test Account
+                </button>
+              )}
             </div>
           </div>
         </form>

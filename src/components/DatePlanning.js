@@ -1,10 +1,23 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { db } from '../utils/firebase';
-import { doc, setDoc, collection, addDoc, serverTimestamp, getDoc, updateDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { doc, setDoc, collection, addDoc, serverTimestamp, getDoc, updateDoc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
+import Map, { Marker, Popup, NavigationControl } from 'react-map-gl';
+import { format, addDays, startOfDay } from 'date-fns';
+import 'mapbox-gl/dist/mapbox-gl.css';
+
+// Mapbox configuration
+const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
+const DEFAULT_COORDINATES = [-122.4194, 37.7749]; // San Francisco coordinates
+const isValidToken = MAPBOX_TOKEN && MAPBOX_TOKEN.length > 0;
+
+// Validate token format
+if (!isValidToken) {
+  console.warn('Warning: Invalid or missing Mapbox token. Please check your environment variables.');
+}
 
 // Sample data for development
 const SAMPLE_PROFILES = {
@@ -64,10 +77,10 @@ const ACTIVITIES = [
 const getFirstName = (fullName) => fullName.split(' ')[0];
 
 const STEPS = {
-  SELECT_TIME: 'select_time',
-  SELECT_ACTIVITY: 'select_activity',
-  CONFIRM: 'confirm',
-  CUSTOM_DATE: 'custom_date'
+  DAY: 1,
+  TIME: 2,
+  ACTIVITY: 3,
+  LOCATION: 4
 };
 
 const SAMPLE_VENUES = [
@@ -102,7 +115,7 @@ export default function DatePlanning({ isNewDate = false }) {
   const location = useLocation();
   const profile = location.state?.profile;
   const returnTo = location.state?.returnTo || '/matches';
-  const [currentStep, setCurrentStep] = useState(STEPS.SELECT_TIME);
+  const [currentStep, setCurrentStep] = useState(STEPS.DAY);
   const [selectedDay, setSelectedDay] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
   const [selectedActivity, setSelectedActivity] = useState('');
@@ -115,6 +128,21 @@ export default function DatePlanning({ isNewDate = false }) {
   const [requestId, setRequestId] = useState(null);
   const [overlappingSlots, setOverlappingSlots] = useState({});
   const [currentUserAvailability, setCurrentUserAvailability] = useState(null);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [viewState, setViewState] = useState({
+    longitude: DEFAULT_COORDINATES[0],
+    latitude: DEFAULT_COORDINATES[1],
+    zoom: 12
+  });
+  const [popupInfo, setPopupInfo] = useState(null);
+  const [viewport, setViewport] = useState({
+    longitude: DEFAULT_COORDINATES[0],
+    latitude: DEFAULT_COORDINATES[1],
+    zoom: 12
+  });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [venues, setVenues] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   // Calculate overlapping availability using useMemo
   const calculateOverlappingSlots = useMemo(() => {
@@ -230,98 +258,175 @@ export default function DatePlanning({ isNewDate = false }) {
   }, [currentUserAvailability, profile?.availability, calculateOverlappingSlots]);
 
   const handleNext = () => {
-    if (currentStep === STEPS.SELECT_TIME && selectedDay && selectedTime) {
-      setCurrentStep(STEPS.SELECT_ACTIVITY);
-    } else if (currentStep === STEPS.SELECT_ACTIVITY && selectedActivity) {
-      setCurrentStep(STEPS.CONFIRM);
+    if (currentStep === STEPS.DAY && selectedDay) {
+      setCurrentStep(STEPS.TIME);
+    } else if (currentStep === STEPS.TIME && selectedTime) {
+      setCurrentStep(STEPS.ACTIVITY);
+    } else if (currentStep === STEPS.ACTIVITY && selectedActivity) {
+      setCurrentStep(STEPS.LOCATION);
     }
   };
 
   const handleBack = () => {
-    if (currentStep === STEPS.SELECT_ACTIVITY) {
-      setCurrentStep(STEPS.SELECT_TIME);
-    } else if (currentStep === STEPS.CONFIRM) {
-      setCurrentStep(STEPS.SELECT_ACTIVITY);
+    if (currentStep === STEPS.TIME) {
+      setCurrentStep(STEPS.DAY);
+    } else if (currentStep === STEPS.ACTIVITY) {
+      setCurrentStep(STEPS.TIME);
+    } else if (currentStep === STEPS.LOCATION) {
+      setCurrentStep(STEPS.ACTIVITY);
     } else {
       navigate(returnTo);
     }
   };
 
-  const handleCreateRequest = async () => {
-    if (!selectedDay || !selectedTime || !selectedActivity) {
-      toast.error('Please select a day, time, and activity');
-      return;
-    }
-
-    if (!profile || !profile.id) {
-      toast.error('Invalid profile data');
-      return;
-    }
-
+  // Function to search for venues using the Mapbox Geocoding API
+  const searchVenues = async (query) => {
+    if (!isValidToken || !query.trim()) return;
+    
+    setIsSearching(true);
     try {
-      setLoading(true);
-      const dateRequestRef = collection(db, 'dateRequests');
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?` +
+        `access_token=${MAPBOX_TOKEN}&` +
+        `proximity=${viewport.longitude},${viewport.latitude}&` +
+        `types=poi&limit=5`
+      );
       
-      // Create the date request
-      const newRequest = {
-        senderId: currentUser.uid,
-        recipientId: profile.id,
-        participants: [currentUser.uid, profile.id],
-        status: 'pending',
+      const data = await response.json();
+      const formattedVenues = data.features.map(feature => ({
+        id: feature.id,
+        name: feature.text,
+        address: feature.place_name,
+        coordinates: feature.center,
+      }));
+      
+      setVenues(formattedVenues);
+    } catch (error) {
+      console.error('Error searching venues:', error);
+      toast.error('Failed to search venues. Please try again.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Debounce search to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchQuery) {
+        searchVenues(searchQuery);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Handle map click to set location
+  const handleMapClick = (event) => {
+    if (!event.lngLat) return;
+    
+    setSelectedLocation({
+      longitude: event.lngLat.lng,
+      latitude: event.lngLat.lat,
+      name: 'Custom Location',
+      address: 'Selected on map'
+    });
+    setSelectedVenue({
+      id: 'custom',
+      name: 'Custom Location',
+      address: 'Selected on map',
+      coordinates: [event.lngLat.lng, event.lngLat.lat]
+    });
+  };
+
+  // Render map component
+  const renderMap = () => {
+    if (!isValidToken) {
+      return (
+        <div className="h-[calc(100vh-180px)] w-full flex items-center justify-center bg-gray-100">
+          <p className="text-gray-500">Invalid Mapbox token. Please use a public token (pk.*)</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="h-[calc(100vh-280px)] w-full relative rounded-lg overflow-hidden">
+        <Map
+          {...viewport}
+          mapboxAccessToken={MAPBOX_TOKEN}
+          onMove={evt => setViewport(evt.viewState)}
+          onClick={handleMapClick}
+          style={{width: '100%', height: '100%'}}
+          mapStyle="mapbox://styles/mapbox/streets-v12"
+        >
+          <NavigationControl position="top-right" />
+          
+          {selectedLocation && (
+            <Marker
+              longitude={selectedLocation.longitude}
+              latitude={selectedLocation.latitude}
+              anchor="bottom"
+            >
+              <div className="w-8 h-8 bg-rose-500 rounded-full flex items-center justify-center text-white cursor-pointer transform hover:scale-110 transition-transform">
+                📍
+              </div>
+            </Marker>
+          )}
+        </Map>
+      </div>
+    );
+  };
+
+  const renderLocationStep = () => (
+    <div className="space-y-6">
+      <div className="bg-white rounded-lg p-4 shadow-sm">
+        <h3 className="text-lg font-semibold mb-4">Select Location</h3>
+        <p className="text-gray-600 mb-4">Click anywhere on the map to select your date location</p>
+        {renderMap()}
+        {selectedLocation && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-900">Selected Location</h4>
+            <p className="text-gray-600">
+              {selectedVenue ? selectedVenue.name : 'Custom Location'}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Simplified handleCreateRequest function that doesn't require authentication
+  const handleCreateRequest = async () => {
+    try {
+      // Check if we have a selected location
+      if (!selectedVenue && !selectedLocation) {
+        toast.error('Please select a location on the map');
+        return;
+      }
+
+      const dateRequest = {
+        profile: profile,
         dateDetails: {
           day: selectedDay,
           time: selectedTime,
           activity: selectedActivity,
-          // Only include venue if it's set
-          ...(selectedVenue && {
-            venue: selectedVenue.id === 'custom' ? customVenue : selectedVenue.name
-          }),
-          // Only include message if it's not empty
-          ...(message.trim() && { message: message.trim() })
+          venue: selectedVenue ? selectedVenue.name : 'Custom Location',
+          location: selectedVenue ? selectedVenue.address : 'Selected on map',
+          coordinates: selectedVenue ? selectedVenue.coordinates : [selectedLocation.longitude, selectedLocation.latitude]
         },
-        createdAt: serverTimestamp(),
-        lastUpdated: serverTimestamp()
+        status: 'pending',
+        createdAt: new Date().toISOString()
       };
 
-      // Add the request to Firestore
-      const docRef = await addDoc(dateRequestRef, newRequest);
-      console.log('Created date request with ID:', docRef.id);
-      
-      // Create a notification for the recipient
-      const notificationRef = collection(db, 'notifications');
-      await addDoc(notificationRef, {
-        type: 'date_request',
-        toUserId: profile.id,
-        fromUserId: currentUser.uid,
-        dateRequestId: docRef.id,
-        status: 'unread',
-        createdAt: serverTimestamp(),
-        message: `${currentUser.displayName || 'Someone'} sent you a date request!`
-      });
-      
+      // Store in localStorage
+      const existingRequests = JSON.parse(localStorage.getItem('dateRequests') || '[]');
+      existingRequests.push(dateRequest);
+      localStorage.setItem('dateRequests', JSON.stringify(existingRequests));
+
       toast.success('Date request sent successfully!');
-      navigate(returnTo);
+      navigate(returnTo, { replace: true });
     } catch (error) {
       console.error('Error creating date request:', error);
       toast.error('Failed to send date request. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleReject = async () => {
-    if (!location.state?.requestId) return;
-
-    try {
-      await updateDoc(doc(db, 'dateRequests', location.state.requestId), {
-        status: 'rejected',
-        updatedAt: new Date()
-      });
-      toast.success('Date request declined');
-      navigate('/matches');
-    } catch (error) {
-      console.error('Error rejecting date:', error);
-      toast.error('Failed to decline date request');
     }
   };
 
@@ -422,7 +527,7 @@ export default function DatePlanning({ isNewDate = false }) {
 
         {/* Step Content */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          {currentStep === STEPS.SELECT_TIME && (
+          {currentStep === STEPS.DAY && (
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-medium mb-4">Select Day</h3>
@@ -449,39 +554,41 @@ export default function DatePlanning({ isNewDate = false }) {
                   })}
                 </div>
               </div>
-
-              {selectedDay && (
-                <div>
-                  <h3 className="text-lg font-medium mb-4">Select Time</h3>
-                  <div className="grid grid-cols-1 gap-4">
-                    {overlappingSlots[selectedDay]?.map(period => (
-                      <div key={period} className="space-y-2">
-                        <h4 className="font-medium capitalize">{period}</h4>
-                        <div className="grid grid-cols-2 gap-2">
-                          {TIME_PERIODS[period].map(time => (
-                            <button
-                              key={time}
-                              type="button"
-                              onClick={() => setSelectedTime(time)}
-                              className={`p-3 rounded-lg text-left ${
-                                selectedTime === time
-                                  ? 'bg-rose-500 text-white'
-                                  : 'bg-gray-50 text-gray-900 hover:bg-gray-100'
-                              }`}
-                            >
-                              {time}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
-          {currentStep === STEPS.SELECT_ACTIVITY && (
+          {currentStep === STEPS.TIME && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-medium mb-4">Select Time</h3>
+                <div className="grid grid-cols-1 gap-4">
+                  {overlappingSlots[selectedDay]?.map(period => (
+                    <div key={period} className="space-y-2">
+                      <h4 className="font-medium capitalize">{period}</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {TIME_PERIODS[period].map(time => (
+                          <button
+                            key={time}
+                            type="button"
+                            onClick={() => setSelectedTime(time)}
+                            className={`p-3 rounded-lg text-left ${
+                              selectedTime === time
+                                ? 'bg-rose-500 text-white'
+                                : 'bg-gray-50 text-gray-900 hover:bg-gray-100'
+                            }`}
+                          >
+                            {time}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {currentStep === STEPS.ACTIVITY && (
             <div>
               <h3 className="text-lg font-medium mb-4">Select Activity</h3>
               <div className="grid grid-cols-2 gap-2">
@@ -503,35 +610,7 @@ export default function DatePlanning({ isNewDate = false }) {
             </div>
           )}
 
-          {currentStep === STEPS.CONFIRM && (
-            <div className="space-y-6">
-              <h3 className="text-lg font-medium">Confirm Date Details</h3>
-              <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                <p><span className="font-medium">With:</span> {profile.basicInfo?.name}</p>
-                <p><span className="font-medium">Day:</span> {selectedDay}</p>
-                <p><span className="font-medium">Time:</span> {selectedTime}</p>
-                <p><span className="font-medium">Activity:</span> {selectedActivity}</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Add a message (optional)</label>
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Looking forward to meeting you!"
-                  className="w-full p-3 border border-gray-200 rounded-lg focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
-                  rows={3}
-                />
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-4">
-                <p className="text-sm text-yellow-800">
-                  Once you send this request, {profile.basicInfo?.name.split(' ')[0]} will need to confirm.
-                  After your date, you'll both need to enter a confirmation code.
-                </p>
-              </div>
-            </div>
-          )}
+          {currentStep === STEPS.LOCATION && renderLocationStep()}
         </div>
 
         {/* Navigation Buttons */}
@@ -542,7 +621,7 @@ export default function DatePlanning({ isNewDate = false }) {
           >
             Back
           </button>
-          {currentStep === STEPS.CONFIRM ? (
+          {currentStep === STEPS.LOCATION ? (
             <button
               onClick={handleCreateRequest}
               disabled={loading}
@@ -554,8 +633,9 @@ export default function DatePlanning({ isNewDate = false }) {
             <button
               onClick={handleNext}
               disabled={
-                (currentStep === STEPS.SELECT_TIME && (!selectedDay || !selectedTime)) ||
-                (currentStep === STEPS.SELECT_ACTIVITY && !selectedActivity)
+                (currentStep === STEPS.DAY && !selectedDay) ||
+                (currentStep === STEPS.TIME && !selectedTime) ||
+                (currentStep === STEPS.ACTIVITY && !selectedActivity)
               }
               className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 disabled:opacity-50"
             >

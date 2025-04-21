@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -7,6 +7,7 @@ import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, getDoc, 
 import toast from 'react-hot-toast';
 import Profile from './Profile';
 import DiscoveryProfile from './DiscoveryProfile';
+import MapView from './MapView';
 
 // Sample profiles matching seeded test users
 const SAMPLE_PROFILES = [
@@ -258,10 +259,10 @@ const LOCAL_SUGGESTIONS = {
   ]
 };
 
-export default function Matches() {
+export default function Matches({ currentView: initialView = 'discovery' }) {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState('discovery');
+  const [currentView, setCurrentView] = useState(initialView);
   const [dateRequests, setDateRequests] = useState([]);
   const [availableProfiles, setAvailableProfiles] = useState([]);
   const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
@@ -273,6 +274,11 @@ export default function Matches() {
   const [userInterests, setUserInterests] = useState(new Set());
   const [expandedEvent, setExpandedEvent] = useState(null);
   const [confirmationCode, setConfirmationCode] = useState('');
+  const [verificationState, setVerificationState] = useState({
+    requestId: null,
+    code: null,
+    startedBy: null
+  });
   const [events, setEvents] = useState([
     {
       title: "Art Gallery Opening",
@@ -308,6 +314,23 @@ export default function Matches() {
       friendsMade: 5
     }
   ]);
+  const [profiles, setProfiles] = useState(SAMPLE_PROFILES);
+  const [loading, setLoading] = useState(false);
+
+  // Debug logging for verification state and requests
+  useEffect(() => {
+    console.log('Verification state updated:', verificationState);
+  }, [verificationState]);
+
+  useEffect(() => {
+    console.log('Date requests updated:', dateRequests);
+  }, [dateRequests]);
+
+  // Add debug logging for verification state changes
+  const updateVerificationState = (newState) => {
+    console.log('Updating verification state:', newState);
+    setVerificationState(newState);
+  };
 
   const generateConfirmationCode = () => {
     // Generate a 4-digit numeric code that's easier to remember and share
@@ -699,6 +722,31 @@ export default function Matches() {
   const renderAcceptedDateDetails = ({ request }) => {
     const otherUser = SAMPLE_PROFILES.find(p => p.id === (request.senderId === currentUser.uid ? request.recipientId : request.senderId));
     
+    console.log('Rendering accepted date details:', {
+      request,
+      currentUser: currentUser.uid,
+      verificationState,
+      requestVerification: {
+        startedBy: request.verificationStartedBy,
+        code: request.preVerificationCode
+      }
+    });
+
+    // Use both local state and request state for verification
+    const isVerificationStarted = request.status === 'pre_verification' || verificationState.requestId === request.id;
+    const showVerificationCode = isVerificationStarted && 
+      ((verificationState.startedBy === currentUser.uid) || (request.verificationStartedBy === currentUser.uid));
+    const verificationCode = verificationState.requestId === request.id ? 
+      verificationState.code : request.preVerificationCode;
+
+    console.log('Verification display logic:', {
+      isVerificationStarted,
+      showVerificationCode,
+      verificationCode,
+      status: request.status,
+      verificationState
+    });
+
     return (
       <div className="space-y-6">
         {/* Profile and Date Details */}
@@ -741,15 +789,18 @@ export default function Matches() {
         {/* Verification Code Section */}
         <div className="bg-white rounded-lg p-6 border border-gray-100">
           <div className="text-center space-y-4">
-            {request.verificationStartedBy === currentUser.uid ? (
+            {showVerificationCode ? (
               <div key="verification-code" className="space-y-4">
+                <p className="text-gray-600 mb-2">Your verification code:</p>
                 <div className="text-4xl font-mono font-bold tracking-wider bg-rose-50 text-rose-600 p-4 rounded-lg inline-block">
-                  {request.preVerificationCode}
+                  {verificationCode}
                 </div>
                 <p className="text-gray-600">Show this code to {otherUser?.basicInfo.name}</p>
+                <p className="text-sm text-gray-500 mt-2">Code: {verificationCode}</p>
               </div>
-            ) : request.verificationStartedBy ? (
+            ) : isVerificationStarted ? (
               <div key="verification-input" className="space-y-4">
+                <p className="text-gray-600 mb-2">Enter the code shown by {otherUser?.basicInfo.name}:</p>
                 <input
                   type="text"
                   maxLength="4"
@@ -758,7 +809,6 @@ export default function Matches() {
                   onChange={(e) => setConfirmationCode(e.target.value.replace(/\D/g, ''))}
                   className="text-center text-4xl font-mono tracking-wider w-40 p-4 border-2 border-gray-200 rounded-lg focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
                 />
-                <p className="text-gray-600">Enter the code shown by {otherUser?.basicInfo.name}</p>
                 <button
                   onClick={() => handleVerifyCode(request.id)}
                   disabled={confirmationCode.length !== 4}
@@ -850,49 +900,100 @@ export default function Matches() {
     </motion.div>
   );
 
-  // Add handler functions for verification
+  // Add Firebase listener for date requests
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const q = query(
+      collection(db, 'dateRequests'),
+      where('participants', 'array-contains', currentUser.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const requests = [];
+      snapshot.forEach((doc) => {
+        const request = { id: doc.id, ...doc.data() };
+        
+        // Update verification state if this request has verification started
+        if (request.status === 'pre_verification' && request.preVerificationCode) {
+          console.log('Found request with verification:', request);
+          
+          // Only update verification state if it's different from current
+          if (verificationState.requestId !== request.id || 
+              verificationState.code !== request.preVerificationCode) {
+            console.log('Updating verification state from Firebase');
+            updateVerificationState({
+              requestId: request.id,
+              code: request.preVerificationCode,
+              startedBy: request.verificationStartedBy
+            });
+          }
+        }
+        
+        requests.push(request);
+      });
+
+      console.log('All requests:', requests);
+      setDateRequests(requests);
+      
+      // Update pending request state
+      const hasPending = requests.some(r => 
+        (r.status === 'pending' || r.status === 'pre_verification') && 
+        r.senderId === currentUser.uid
+      );
+      setHasPendingOutgoingRequest(hasPending);
+
+      // Update last requested profile if there's a pending request
+      const pendingRequest = requests.find(r => 
+        (r.status === 'pending' || r.status === 'pre_verification') && 
+        r.senderId === currentUser.uid
+      );
+      if (pendingRequest) {
+        const profile = SAMPLE_PROFILES.find(p => p.id === pendingRequest.recipientId);
+        setLastRequestedProfile(profile);
+      }
+
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser]);
+
   const handleStartVerification = async (requestId) => {
     try {
-      // Generate a random 4-digit code
+      console.log('Starting verification for request:', requestId);
       const code = Math.floor(1000 + Math.random() * 9000).toString();
+      console.log('Generated code:', code);
       
       // Update local state immediately
-      setDateRequests(prev => prev.map(req => {
-        if (req.id === requestId) {
-          return {
-            ...req,
-            preVerificationCode: code,
-            verificationStartedBy: currentUser.uid
-          };
-        }
-        return req;
-      }));
+      const newState = {
+        requestId,
+        code,
+        startedBy: currentUser.uid
+      };
+      updateVerificationState(newState);
+      console.log('Updated local verification state with code:', code);
 
       // Update Firestore
       const requestRef = doc(db, 'dateRequests', requestId);
       await updateDoc(requestRef, {
+        status: 'pre_verification',
         preVerificationCode: code,
         verificationStartedBy: currentUser.uid,
         lastUpdated: serverTimestamp()
-      }).catch(error => {
-        // If Firestore update fails, reset local state
-        setDateRequests(prev => prev.map(req => {
-          if (req.id === requestId) {
-            return {
-              ...req,
-              preVerificationCode: null,
-              verificationStartedBy: null
-            };
-          }
-          return req;
-        }));
-        throw error;
       });
       
+      console.log('Firestore updated successfully with code:', code);
       toast.success('Verification code generated!');
     } catch (error) {
       console.error('Error starting verification:', error);
-      toast.error('Failed to generate verification code');
+      // Reset verification state on error
+      updateVerificationState({
+        requestId: null,
+        code: null,
+        startedBy: null
+      });
+      toast.error('Failed to generate verification code. Please try again.');
     }
   };
 
@@ -1015,166 +1116,40 @@ export default function Matches() {
   );
 
   const renderDiscoveryView = () => {
-    // Check if there's an active date request
-    const activeRequest = dateRequests.find(r => r.status === 'active');
-    
-    if (activeRequest) {
+    if (loading) {
       return (
-        <motion.div
-          key="active-date"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="space-y-6"
-        >
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            {renderActiveDateDetails({ request: activeRequest })}
-          </div>
-        </motion.div>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500"></div>
+        </div>
       );
     }
 
-    // Check if there's an accepted date request
-    const acceptedRequest = dateRequests.find(r => r.status === 'accepted');
-    
-    if (acceptedRequest) {
-      return renderAcceptedDateDetails({ request: acceptedRequest });
-    }
-
-    // Show waiting screen if there's a pending outgoing request
-    if (hasPendingOutgoingRequest && lastRequestedProfile) {
+    if (!profiles.length) {
       return (
-        <motion.div
-          key="waiting"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="space-y-6"
-        >
-          <div className="bg-white rounded-xl shadow-sm p-6 text-center">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">
-              Waiting for {lastRequestedProfile.basicInfo.name}'s Response
-            </h2>
-            <p className="text-gray-600">
-              We'll notify you when they respond to your date request
-            </p>
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900">While You Wait</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {events.slice(0, 4).map((event, index) => renderEventCard(event, index))}
-            </div>
-          </div>
-        </motion.div>
+        <div className="flex-1 flex flex-col items-center justify-center p-4">
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">No more profiles available</h2>
+          <p className="text-gray-600 text-center mb-4">Check back later for new potential matches</p>
+        </div>
       );
     }
 
-    // Show regular discovery view
-    if (!availableProfiles.length) {
     return (
-        <div className="text-center py-12 bg-white rounded-xl shadow-sm">
-          <p className="text-gray-600">No more profiles available</p>
-          <p className="text-sm text-gray-500 mt-2">
-            Check back later for new potential matches
-          </p>
+      <div className="flex-1 relative">
+        <DiscoveryProfile
+          profile={profiles[currentProfileIndex]}
+          onSkip={() => {
+            if (currentProfileIndex < profiles.length - 1) {
+              setCurrentProfileIndex(currentProfileIndex + 1);
+            } else {
+              setProfiles([]);
+            }
+          }}
+          onProposeDate={(profile) => handleProposeDate(profile)}
+          isLastProfile={currentProfileIndex === profiles.length - 1}
+        />
       </div>
     );
-  }
-
-    const currentProfile = availableProfiles[currentProfileIndex];
-    return (
-      <motion.div
-        key="discovery"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-      >
-        <DiscoveryProfile
-          profile={currentProfile}
-          onSkip={handleSkip}
-          onProposeDate={() => handleProposeDate(currentProfile)}
-        />
-      </motion.div>
-    );
   };
-
-  // Fetch date requests and update state
-  const fetchDateRequests = useCallback(() => {
-    if (!currentUser) return;
-
-    try {
-      setIsLoading(true);
-      
-      // Query for all date requests involving the current user
-      const requestsQuery = query(
-        collection(db, 'dateRequests'),
-        where('participants', 'array-contains', currentUser.uid)
-      );
-
-      // Create the listener
-      const unsubscribe = onSnapshot(requestsQuery, (snapshot) => {
-        const requests = [];
-        const pending = [];
-        let hasActiveOrAcceptedDate = false;
-
-        for (const doc of snapshot.docs) {
-          const request = { id: doc.id, ...doc.data() };
-          requests.push(request);
-          
-          // Check if user has any active or accepted dates
-          if ((request.status === 'active' || request.status === 'accepted') && !request.completedAt) {
-            hasActiveOrAcceptedDate = true;
-          } else if (request.status === 'pending') {
-            pending.push(request);
-          }
-        }
-
-        setDateRequests(requests);
-        setPendingRequests(pending);
-
-        // If user has an active/accepted date, clear available profiles
-        if (hasActiveOrAcceptedDate) {
-          setAvailableProfiles([]);
-          setCurrentProfileIndex(0);
-        } else {
-          // Only show profiles if user has no active/accepted dates
-          const unavailableIds = new Set(
-            requests.flatMap(request => [request.senderId, request.recipientId])
-          );
-
-          const filteredProfiles = SAMPLE_PROFILES.filter(profile => 
-            profile.id !== currentUser.uid && 
-            !unavailableIds.has(profile.id)
-          );
-
-          setAvailableProfiles(filteredProfiles);
-        }
-
-        setIsLoading(false);
-      }, (error) => {
-        console.error('Error in date requests listener:', error);
-        toast.error('Failed to listen to date requests');
-        setIsLoading(false);
-      });
-
-      return unsubscribe;
-    } catch (error) {
-      console.error('Error setting up date requests listener:', error);
-      toast.error('Failed to load date requests');
-      setIsLoading(false);
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
-    const unsubscribe = fetchDateRequests();
-    
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
-  }, [fetchDateRequests]);
 
   const handleDateComplete = async (dateId) => {
     try {
@@ -1249,8 +1224,8 @@ export default function Matches() {
                 </button>
               </div>
             )}
+            </div>
           </div>
-        </div>
           
         {/* Main Content */}
         <AnimatePresence mode="wait">
@@ -1277,7 +1252,7 @@ export default function Matches() {
             </>
           )}
         </AnimatePresence>
-      </div>
+        </div>
     </div>
   );
 } 
