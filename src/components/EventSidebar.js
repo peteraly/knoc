@@ -6,8 +6,8 @@ import EventForm from './EventForm';
 import { useEvents } from '../contexts/EventContext';
 import { format } from 'date-fns';
 
-const EventSidebar = ({ events, selectedEvent, onAddEvent }) => {
-  const { handleToggleAttendance, selectEvent, isUserWaitlisted } = useEvents();
+const EventSidebar = ({ events, selectedEvent, onEventSelect }) => {
+  const { handleToggleAttendance, selectEvent, isUserWaitlisted, handleAddEvent } = useEvents();
   const [view, setView] = useState('discover'); // Default to discover view
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedPeopleNeeded, setSelectedPeopleNeeded] = useState('all');
@@ -113,30 +113,30 @@ const EventSidebar = ({ events, selectedEvent, onAddEvent }) => {
     }
   };
 
-  const handleAddEvent = (eventData) => {
-    onAddEvent(eventData);
+  const handleAddEventSubmit = (eventData) => {
+    handleAddEvent(eventData);
     setShowAddEventModal(false);
   };
 
   return (
     <div className="flex flex-col h-full bg-white shadow-xl">
       {/* Main Navigation */}
-      <div className="flex items-center gap-2 p-2 border-b">
+      <div className="grid grid-cols-4 gap-1 p-2 border-b">
         {mainNavOptions.map(option => (
           <button
             key={option.id}
             onClick={() => setView(option.id)}
             className={`
-              flex items-center justify-center flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors
+              flex flex-col items-center justify-center p-2 rounded-lg text-sm font-medium transition-colors
               ${view === option.id
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }
             `}
           >
-            <option.icon className="w-5 h-5 mr-2" />
-            {option.name}
-            <span className="ml-2 bg-white bg-opacity-20 px-2 py-0.5 rounded-full text-xs">
+            <option.icon className="w-5 h-5 mb-1" />
+            <span className="text-xs text-center">{option.name}</span>
+            <span className="mt-1 bg-white bg-opacity-20 px-1.5 py-0.5 rounded-full text-xs">
               {option.count}
             </span>
           </button>
@@ -145,10 +145,10 @@ const EventSidebar = ({ events, selectedEvent, onAddEvent }) => {
         {/* Add Event Button */}
         <button
           onClick={() => setShowAddEventModal(true)}
-          className="flex items-center justify-center px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+          className="flex flex-col items-center justify-center p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors"
         >
-          <PlusIcon className="w-5 h-5 mr-2" />
-          <span className="font-medium">Add Event</span>
+          <PlusIcon className="w-5 h-5 mb-1" />
+          <span className="text-xs text-center">Add Event</span>
         </button>
       </div>
 
@@ -326,7 +326,7 @@ const EventSidebar = ({ events, selectedEvent, onAddEvent }) => {
               </button>
             </div>
             <EventForm
-              onSubmit={handleAddEvent}
+              onSubmit={handleAddEventSubmit}
               onCancel={() => setShowAddEventModal(false)}
             />
           </div>

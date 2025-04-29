@@ -5,6 +5,7 @@ import { EventProvider } from './contexts/EventContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { AdminProvider } from './contexts/AdminContext';
 import Navigation from './components/Navigation';
+import Dashboard from './components/Dashboard';
 import Events from './components/Events';
 import MyEvents from './components/MyEvents';
 import Profile from './components/Profile';
@@ -31,7 +32,8 @@ function App() {
                     <Route path="/register" element={<Register />} />
 
                     {/* Protected routes */}
-                    <Route path="/" element={<Navigate to="/events" replace />} />
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
                     <Route path="/events" element={<PrivateRoute><Events /></PrivateRoute>} />
                     <Route path="/my-events" element={<PrivateRoute><MyEvents /></PrivateRoute>} />
                     <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />

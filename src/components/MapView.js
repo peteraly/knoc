@@ -16,12 +16,6 @@ const TIMELINE_OPTIONS = {
   MONTH: 'month'
 };
 
-// Minimum and maximum dimensions for the map
-const MIN_MAP_WIDTH = 320; // px
-const MAX_MAP_WIDTH = '65vw';
-const MIN_MAP_HEIGHT = 400; // px
-const MAX_MAP_HEIGHT = '80vh';
-
 const MapView = ({ events, selectedEvent, onEventSelect }) => {
   const [viewport, setViewport] = useState({
     latitude: DEFAULT_COORDINATES[1],
@@ -80,12 +74,7 @@ const MapView = ({ events, selectedEvent, onEventSelect }) => {
   };
 
   return (
-    <div className="relative w-full h-full" style={{
-      minWidth: MIN_MAP_WIDTH,
-      maxWidth: MAX_MAP_WIDTH,
-      minHeight: MIN_MAP_HEIGHT,
-      maxHeight: MAX_MAP_HEIGHT
-    }}>
+    <div className="absolute inset-0">
       <Map
         {...viewport}
         style={{ width: '100%', height: '100%' }}
@@ -100,7 +89,7 @@ const MapView = ({ events, selectedEvent, onEventSelect }) => {
             key={event.id}
             latitude={event.coordinates[1]}
             longitude={event.coordinates[0]}
-            anchor="center"
+            anchor="bottom"
             onClick={e => {
               e.originalEvent.stopPropagation();
               handleMarkerClick(event);
@@ -108,12 +97,28 @@ const MapView = ({ events, selectedEvent, onEventSelect }) => {
           >
             <div
               className={`
-                w-10 h-10 rounded-full flex items-center justify-center
-                border-3 border-white shadow-md cursor-pointer transition-all
-                ${selectedEvent?.id === event.id ? 'bg-rose-500' : 'bg-rose-400 hover:bg-rose-500'}
+                flex items-center justify-center transition-all duration-300 transform
+                ${selectedEvent?.id === event.id ? 
+                  'scale-125 -translate-y-1 z-10' : 
+                  'hover:scale-110'
+                }
               `}
             >
-              <span className="text-xl">{event.emoji}</span>
+              <div
+                className={`
+                  w-10 h-10 rounded-full flex items-center justify-center
+                  border-2 shadow-lg cursor-pointer
+                  ${selectedEvent?.id === event.id ? 
+                    'border-white bg-rose-500 shadow-rose-200' : 
+                    'border-white bg-rose-400 hover:bg-rose-500'
+                  }
+                `}
+              >
+                <span className="text-xl">{event.emoji}</span>
+              </div>
+              {selectedEvent?.id === event.id && (
+                <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-rose-500 rotate-45" />
+              )}
             </div>
           </Marker>
         ))}

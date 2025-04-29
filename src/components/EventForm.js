@@ -15,6 +15,11 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
     perks: false
   });
 
+  // Deadline toggles
+  const [hasRegistrationDeadline, setHasRegistrationDeadline] = useState(false);
+  const [hasCancellationDeadline, setHasCancellationDeadline] = useState(false);
+  const [hasConfirmationDeadline, setHasConfirmationDeadline] = useState(false);
+
   // Toggle section visibility
   const toggleSection = (section) => {
     setOpenSections(prev => ({
@@ -106,10 +111,10 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
       maxAttendees: parseInt(maxAttendees, 10),
       vipSpots: parseInt(vipSpots, 10),
       groupMaxSize: parseInt(groupMaxSize, 10),
-      registrationDeadline,
-      cancellationDeadline,
+      registrationDeadline: hasRegistrationDeadline ? registrationDeadline : null,
+      cancellationDeadline: hasCancellationDeadline ? cancellationDeadline : null,
       minAttendees: parseInt(minAttendees, 10),
-      confirmationDeadline,
+      confirmationDeadline: hasConfirmationDeadline ? confirmationDeadline : null,
       eventType,
       accessControl: {
         type: accessControlType,
@@ -348,34 +353,88 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Registration Deadline</label>
-                <input
-                  type="datetime-local"
-                  value={registrationDeadline}
-                  onChange={(e) => setRegistrationDeadline(e.target.value)}
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              {/* Deadlines Section */}
+              <div className="mt-6">
+                <h4 className="text-sm font-medium text-gray-900 mb-4">Deadlines</h4>
+                <div className="space-y-4">
+                  {/* Registration Deadline */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-700">Registration Deadline</label>
+                      <button
+                        type="button"
+                        onClick={() => setHasRegistrationDeadline(!hasRegistrationDeadline)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          hasRegistrationDeadline
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {hasRegistrationDeadline ? 'Set' : 'None'}
+                      </button>
+                    </div>
+                    {hasRegistrationDeadline && (
+                      <input
+                        type="datetime-local"
+                        value={registrationDeadline}
+                        onChange={(e) => setRegistrationDeadline(e.target.value)}
+                        className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    )}
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Cancellation Deadline</label>
-                <input
-                  type="datetime-local"
-                  value={cancellationDeadline}
-                  onChange={(e) => setCancellationDeadline(e.target.value)}
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+                  {/* Cancellation Deadline */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-700">Cancellation Deadline</label>
+                      <button
+                        type="button"
+                        onClick={() => setHasCancellationDeadline(!hasCancellationDeadline)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          hasCancellationDeadline
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {hasCancellationDeadline ? 'Set' : 'None'}
+                      </button>
+                    </div>
+                    {hasCancellationDeadline && (
+                      <input
+                        type="datetime-local"
+                        value={cancellationDeadline}
+                        onChange={(e) => setCancellationDeadline(e.target.value)}
+                        className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    )}
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Confirmation Deadline</label>
-                <input
-                  type="datetime-local"
-                  value={confirmationDeadline}
-                  onChange={(e) => setConfirmationDeadline(e.target.value)}
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  {/* Confirmation Deadline */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm font-medium text-gray-700">Confirmation Deadline</label>
+                      <button
+                        type="button"
+                        onClick={() => setHasConfirmationDeadline(!hasConfirmationDeadline)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          hasConfirmationDeadline
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-gray-100 text-gray-600'
+                        }`}
+                      >
+                        {hasConfirmationDeadline ? 'Set' : 'None'}
+                      </button>
+                    </div>
+                    {hasConfirmationDeadline && (
+                      <input
+                        type="datetime-local"
+                        value={confirmationDeadline}
+                        onChange={(e) => setConfirmationDeadline(e.target.value)}
+                        className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
