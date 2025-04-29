@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth } from '../utils/firebase';
 import { toast } from 'react-hot-toast';
 import { v4 as uuidv4 } from 'uuid';
+import { doc, updateDoc, arrayUnion, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../utils/firebase';
 
 const EventContext = createContext();
 
@@ -94,8 +96,10 @@ export const EventProvider = ({ children }) => {
       status: 'confirmed',
       maxAttendees: 15,
       minAttendees: 5,
-      attendees: [auth.currentUser?.uid, ...Array(11).fill('dummy-user')],
+      attendees: ['current-user', 'dummy-user-2', 'dummy-user-3'],
       hosts: ['host-1'],
+      category: 'food',
+      subcategory: 'cooking',
       registrationDeadline: '2025-01-04',
       cancellationDeadline: '2025-01-03',
       pricing: {
@@ -119,8 +123,10 @@ export const EventProvider = ({ children }) => {
       status: 'confirmed',
       maxAttendees: 12,
       minAttendees: 4,
-      attendees: [auth.currentUser?.uid, ...Array(7).fill('dummy-user')],
+      attendees: ['current-user', 'dummy-user-5', 'dummy-user-6'],
       hosts: ['host-2'],
+      category: 'arts',
+      subcategory: 'art-class',
       registrationDeadline: '2025-01-04',
       cancellationDeadline: '2025-01-03',
       pricing: {
@@ -144,8 +150,10 @@ export const EventProvider = ({ children }) => {
       status: 'confirmed',
       maxAttendees: 30,
       minAttendees: 15,
-      attendees: [auth.currentUser?.uid, ...Array(24).fill('dummy-user')],
+      attendees: ['current-user', 'dummy-user-8', 'dummy-user-9'],
       hosts: ['host-3'],
+      category: 'arts',
+      subcategory: 'concert',
       registrationDeadline: '2025-01-09',
       cancellationDeadline: '2025-01-08',
       pricing: {
@@ -169,6 +177,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.5092, 37.7697],
       emoji: '🧘‍♀️',
       status: 'upcoming',
+      category: 'sports',
+      subcategory: 'yoga',
       attendees: Array(15).fill('dummy-user'),
     },
     {
@@ -181,6 +191,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4127, 37.7641],
       emoji: '🤖',
       status: 'upcoming',
+      category: 'networking',
+      subcategory: 'professional',
       attendees: Array(40).fill('dummy-user'),
     },
     // February 2025
@@ -194,6 +206,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4229, 37.8055],
       emoji: '🍫',
       status: 'upcoming',
+      category: 'food',
+      subcategory: 'cooking',
       attendees: Array(20).fill('dummy-user'),
     },
     {
@@ -206,6 +220,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4062, 37.7939],
       emoji: '🐍',
       status: 'upcoming',
+      category: 'community',
+      subcategory: 'festival',
       attendees: Array(100).fill('dummy-user'),
     },
     {
@@ -218,6 +234,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.1082, 37.4380],
       emoji: '🍷',
       status: 'upcoming',
+      category: 'drinks',
+      subcategory: 'wine-tasting',
       attendees: Array(30).fill('dummy-user'),
     },
     // March 2025
@@ -231,6 +249,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4430, 37.6305],
       emoji: '🌱',
       status: 'upcoming',
+      category: 'workshop',
+      subcategory: 'craft',
       attendees: Array(25).fill('dummy-user'),
     },
     {
@@ -243,6 +263,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4759, 37.7726],
       emoji: '🍀',
       status: 'upcoming',
+      category: 'sports',
+      subcategory: 'team-sport',
       attendees: Array(150).fill('dummy-user'),
     },
     {
@@ -255,6 +277,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4663, 37.7654],
       emoji: '🌱',
       status: 'upcoming',
+      category: 'workshop',
+      subcategory: 'craft',
       attendees: Array(30).fill('dummy-user'),
     },
     {
@@ -267,6 +291,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4059, 37.7969],
       emoji: '🏀',
       status: 'upcoming',
+      category: 'entertainment',
+      subcategory: 'game-night',
       attendees: Array(75).fill('dummy-user'),
     },
     {
@@ -279,6 +305,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4194, 37.7793],
       emoji: '☘️',
       status: 'upcoming',
+      category: 'community',
+      subcategory: 'festival',
       attendees: Array(1000).fill('dummy-user'),
     },
     // April 2025
@@ -292,6 +320,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4299, 37.7845],
       emoji: '🌸',
       status: 'upcoming',
+      category: 'community',
+      subcategory: 'festival',
       attendees: Array(200).fill('dummy-user'),
     },
     {
@@ -428,6 +458,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4147, 37.7555],
       emoji: '🧘',
       status: 'upcoming',
+      category: 'sports',
+      subcategory: 'yoga',
       attendees: Array(15).fill('dummy-user'),
     },
     {
@@ -440,6 +472,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4127, 37.7641],
       emoji: '💻',
       status: 'upcoming',
+      category: 'workshop',
+      subcategory: 'tech',
       attendees: Array(20).fill('dummy-user'),
     },
     {
@@ -452,6 +486,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.3934, 37.7956],
       emoji: '🥕',
       status: 'upcoming',
+      category: 'food',
+      subcategory: 'food-tour',
       attendees: Array(200).fill('dummy-user'),
     },
     {
@@ -464,6 +500,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4033, 37.7724],
       emoji: '💃',
       status: 'upcoming',
+      category: 'class',
+      subcategory: 'dance',
       attendees: Array(30).fill('dummy-user'),
     },
     // Weekly events for multiple months
@@ -477,6 +515,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4147, 37.7555],
       emoji: '🧘',
       status: 'upcoming',
+      category: 'sports',
+      subcategory: 'yoga',
       attendees: Array(15).fill('dummy-user'),
     },
     {
@@ -489,6 +529,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4155, 37.7524],
       emoji: '📚',
       status: 'upcoming',
+      category: 'class',
+      subcategory: 'language',
       attendees: Array(25).fill('dummy-user'),
     },
     {
@@ -501,6 +543,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.3932, 37.7955],
       emoji: '🎲',
       status: 'upcoming',
+      category: 'entertainment',
+      subcategory: 'game-night',
       attendees: Array(40).fill('dummy-user'),
     },
     {
@@ -513,6 +557,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4147, 37.7874],
       emoji: '🏺',
       status: 'upcoming',
+      category: 'workshop',
+      subcategory: 'craft',
       attendees: Array(12).fill('dummy-user'),
     },
     {
@@ -525,6 +571,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4076, 37.6547],
       emoji: '🍝',
       status: 'upcoming',
+      category: 'food',
+      subcategory: 'cooking',
       attendees: Array(15).fill('dummy-user'),
     },
     // Continue adding events through July...
@@ -538,6 +586,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4702, 37.7702],
       emoji: '🎨',
       status: 'upcoming',
+      category: 'workshop',
+      subcategory: 'craft',
       attendees: Array(20).fill('dummy-user'),
     },
     {
@@ -550,6 +600,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4279, 37.8074],
       emoji: '🍴',
       status: 'upcoming',
+      category: 'food',
+      subcategory: 'food-tour',
       attendees: Array(500).fill('dummy-user'),
     },
     {
@@ -562,6 +614,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4477, 37.7544],
       emoji: '📸',
       status: 'upcoming',
+      category: 'arts',
+      subcategory: 'art-class',
       attendees: Array(15).fill('dummy-user'),
     },
     {
@@ -574,6 +628,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4484, 37.8029],
       emoji: '✏️',
       status: 'upcoming',
+      category: 'arts',
+      subcategory: 'art-class',
       attendees: Array(20).fill('dummy-user'),
     },
     {
@@ -586,6 +642,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4584, 37.7694],
       emoji: '🎸',
       status: 'upcoming',
+      category: 'arts',
+      subcategory: 'concert',
       attendees: Array(300).fill('dummy-user'),
     },
     {
@@ -598,6 +656,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.5092, 37.7697],
       emoji: '🎧',
       status: 'upcoming',
+      category: 'entertainment',
+      subcategory: 'game-night',
       attendees: Array(150).fill('dummy-user'),
     },
     // July Events
@@ -611,6 +671,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4103, 37.8087],
       emoji: '🎆',
       status: 'upcoming',
+      category: 'entertainment',
+      subcategory: 'game-night',
       attendees: Array(3000).fill('dummy-user'),
     },
     {
@@ -623,6 +685,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4074, 37.7879],
       emoji: '🎷',
       status: 'upcoming',
+      category: 'arts',
+      subcategory: 'concert',
       attendees: Array(500).fill('dummy-user'),
     },
     // August Events
@@ -636,6 +700,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4862, 37.7694],
       emoji: '🎸',
       status: 'upcoming',
+      category: 'arts',
+      subcategory: 'concert',
       attendees: Array(10000).fill('dummy-user'),
     },
     {
@@ -648,6 +714,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4194, 37.7601],
       emoji: '🌮',
       status: 'upcoming',
+      category: 'food',
+      subcategory: 'food-tour',
       attendees: Array(2000).fill('dummy-user'),
     },
     // September Events
@@ -661,6 +729,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4169, 37.8080],
       emoji: '🚶',
       status: 'upcoming',
+      category: 'community',
+      subcategory: 'festival',
       attendees: Array(1500).fill('dummy-user'),
     },
     {
@@ -673,6 +743,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4064, 37.7941],
       emoji: '🌕',
       status: 'upcoming',
+      category: 'community',
+      subcategory: 'festival',
       attendees: Array(1200).fill('dummy-user'),
     },
     // October Events
@@ -686,6 +758,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4350, 37.7620],
       emoji: '🎃',
       status: 'upcoming',
+      category: 'community',
+      subcategory: 'festival',
       attendees: Array(2500).fill('dummy-user'),
     },
     {
@@ -698,6 +772,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4279, 37.8064],
       emoji: '🍷',
       status: 'upcoming',
+      category: 'drinks',
+      subcategory: 'wine-tasting',
       attendees: Array(800).fill('dummy-user'),
     },
     // November Events
@@ -711,6 +787,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4662, 37.7989],
       emoji: '🎖️',
       status: 'upcoming',
+      category: 'community',
+      subcategory: 'festival',
       attendees: Array(500).fill('dummy-user'),
     },
     {
@@ -723,6 +801,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4862, 37.7694],
       emoji: '🦃',
       status: 'upcoming',
+      category: 'sports',
+      subcategory: 'team-sport',
       attendees: Array(1000).fill('dummy-user'),
     },
     // December Events
@@ -736,6 +816,8 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.4074, 37.7879],
       emoji: '⛸️',
       status: 'upcoming',
+      category: 'sports',
+      subcategory: 'team-sport',
       attendees: Array(300).fill('dummy-user'),
     },
     {
@@ -748,10 +830,26 @@ export const EventProvider = ({ children }) => {
       coordinates: [-122.3968, 37.7955],
       emoji: '🎉',
       status: 'upcoming',
+      category: 'entertainment',
+      subcategory: 'game-night',
       attendees: Array(5000).fill('dummy-user'),
     },
   ]);
+  
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(user => {
+      setCurrentUser(user);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [invites, setInvites] = useState({});
 
   const handleAddEvent = (eventData) => {
     const newEvent = {
@@ -908,8 +1006,7 @@ export const EventProvider = ({ children }) => {
   };
 
   const handleToggleAttendance = (eventId, groupSize = 1) => {
-    const userId = auth.currentUser?.uid;
-    if (!userId) {
+    if (!currentUser) {
       toast.error('Please sign in to attend events');
       return;
     }
@@ -927,8 +1024,8 @@ export const EventProvider = ({ children }) => {
         const attendees = event.attendees || [];
         const waitlist = event.waitlist || [];
         const waitlistGroups = event.waitlistGroups || [];
-        const isAttending = attendees.includes(userId);
-        const isWaitlisted = waitlist.includes(userId);
+        const isAttending = attendees.includes(currentUser.uid);
+        const isWaitlisted = waitlist.includes(currentUser.uid);
 
         // Handle leaving the event
         if (isAttending) {
@@ -938,7 +1035,7 @@ export const EventProvider = ({ children }) => {
             return event;
           }
 
-          const newAttendees = attendees.filter(id => id !== userId);
+          const newAttendees = attendees.filter(id => id !== currentUser.uid);
           const wasConfirmed = event.status === 'confirmed';
           
           // Check if event is now at risk or cancelled
@@ -949,37 +1046,13 @@ export const EventProvider = ({ children }) => {
               ...event,
               attendees: newAttendees
             });
-            toast.warning(`This event is now at risk of cancellation (${newAttendees.length}/${event.minAttendees} minimum attendees)`);
-          }
-
-          // Promote from waitlist if possible
-          if (waitlist.length > 0) {
-            const availableSpots = event.maxAttendees - newAttendees.length;
-            const [nextAttendee, ...remainingWaitlist] = waitlist;
-            const promotedAttendees = [...newAttendees, nextAttendee];
-            
-            if (newStatus === 'at-risk' && promotedAttendees.length >= event.minAttendees) {
-              newStatus = 'confirmed';
-              notifyEventConfirmed({
-                ...event,
-                attendees: promotedAttendees
-              });
-            }
-            
-            toast.success('Promoted next person from waitlist');
-            return {
-              ...event,
-              attendees: promotedAttendees,
-              waitlist: remainingWaitlist,
-              status: newStatus
-            };
           }
 
           toast.success('Successfully cancelled attendance');
           return {
-              ...event,
-              attendees: newAttendees,
-              status: newStatus
+            ...event,
+            attendees: newAttendees,
+            status: newStatus
           };
         }
         
@@ -988,8 +1061,8 @@ export const EventProvider = ({ children }) => {
           toast.success('Successfully left waitlist');
           return {
             ...event,
-            waitlist: waitlist.filter(id => id !== userId),
-            waitlistGroups: waitlistGroups.filter(g => !g.userIds?.includes(userId))
+            waitlist: waitlist.filter(id => id !== currentUser.uid),
+            waitlistGroups: waitlistGroups.filter(g => !g.userIds?.includes(currentUser.uid))
           };
         }
 
@@ -1006,7 +1079,7 @@ export const EventProvider = ({ children }) => {
           toast.success('Successfully joined event');
           return {
             ...event,
-            attendees: [...attendees, userId],
+            attendees: [...attendees, currentUser.uid],
             status: newStatus
           };
         } else {
@@ -1016,10 +1089,10 @@ export const EventProvider = ({ children }) => {
             toast.success(`Added group of ${groupSize} to waitlist`);
             return {
               ...event,
-              waitlist: [...waitlist, userId],
+              waitlist: [...waitlist, currentUser.uid],
               waitlistGroups: [...waitlistGroups, {
                 groupId,
-                userIds: [userId],
+                userIds: [currentUser.uid],
                 size: groupSize
               }]
             };
@@ -1028,12 +1101,11 @@ export const EventProvider = ({ children }) => {
           toast.success('Added to waitlist');
           return {
             ...event,
-            waitlist: [...waitlist, userId]
+            waitlist: [...waitlist, currentUser.uid]
           };
         }
       });
 
-      // Force a re-render by creating a new array
       return [...updatedEvents];
     });
   };
@@ -1705,14 +1777,48 @@ export const EventProvider = ({ children }) => {
     return viabilityResult;
   };
 
+  const handleInviteUser = async (eventId, userId) => {
+    try {
+      // Add invite to the event
+      const eventRef = doc(db, 'events', eventId);
+      await updateDoc(eventRef, {
+        invites: arrayUnion(userId)
+      });
+
+      // Create notification for invited user
+      const notificationRef = collection(db, 'notifications');
+      await addDoc(notificationRef, {
+        type: 'event_invite',
+        eventId,
+        userId,
+        senderId: auth.currentUser?.uid,
+        senderName: auth.currentUser?.displayName,
+        eventTitle: events.find(e => e.id === eventId)?.title,
+        createdAt: serverTimestamp(),
+        read: false
+      });
+
+      toast.success('Invitation sent successfully!');
+    } catch (error) {
+      console.error('Error sending invite:', error);
+      toast.error('Failed to send invitation');
+    }
+  };
+
+  const selectEvent = (event) => {
+    setSelectedEvent(event);
+  };
+
   const value = {
     events,
+    setEvents,
     selectedEvent,
-    addEvent: handleAddEvent,
-    editEvent: handleEditEvent,
-    deleteEvent: handleDeleteEvent,
-    selectEvent: handleEventSelect,
-    toggleAttendance: handleToggleAttendance,
+    selectEvent,
+    handleAddEvent,
+    handleEditEvent,
+    handleDeleteEvent,
+    handleEventSelect,
+    handleToggleAttendance,
     handleToggleHost,
     checkEventViability,
     isUserAttending,
@@ -1720,10 +1826,8 @@ export const EventProvider = ({ children }) => {
     getEventAttendeeCount,
     getEventWaitlistCount,
     getWaitlistPosition,
-    updateEvent,
-    getEventStatus,
-    getEventStatusText,
-    getEventStatusColor,
+    loading,
+    currentUser,
     eventCategories,
     getCategoryEmoji,
     getCategoryName,
@@ -1732,11 +1836,12 @@ export const EventProvider = ({ children }) => {
     processRefund,
     transferUserToEvent,
     addNotification,
+    handleInviteUser,
   };
 
   return (
     <EventContext.Provider value={value}>
-      {children}
+      {!loading && children}
     </EventContext.Provider>
   );
 }; 
