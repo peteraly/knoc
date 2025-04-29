@@ -3,15 +3,63 @@ import { useNavigate } from 'react-router-dom';
 import { seedDatabase, clearTestData } from '../utils/seedDatabase';
 import { SAMPLE_PROFILES, populateUserData, populateMatches } from '../utils/seedData';
 import { useAuth } from '../contexts/AuthContext';
-import { db } from '../utils/firebase';
-import { collection, query, where, getDocs, doc, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../utils/firebase';
+import { collection, query, where, getDocs, doc, getDoc, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+
+// Test users with their data
+const TEST_USERS = [
+  {
+    email: 'test1@example.com',
+    password: 'test123',
+    basicInfo: {
+      name: 'Test User 1',
+      age: 28,
+      location: 'San Francisco, CA',
+      bio: 'Test user for development'
+    },
+    activities: ['Hiking', 'Coffee', 'Movies'],
+    availability: {
+      Monday: ['Morning', 'Evening'],
+      Wednesday: ['Afternoon'],
+      Friday: ['Morning', 'Afternoon', 'Evening']
+    },
+    preferences: {
+      ageRange: [25, 35],
+      distance: 25,
+      activities: ['Hiking', 'Coffee', 'Movies', 'Dining']
+    }
+  },
+  {
+    email: 'test2@example.com',
+    password: 'test123',
+    basicInfo: {
+      name: 'Test User 2',
+      age: 30,
+      location: 'San Francisco, CA',
+      bio: 'Another test user for development'
+    },
+    activities: ['Photography', 'Art', 'Music'],
+    availability: {
+      Tuesday: ['Morning', 'Evening'],
+      Thursday: ['Afternoon'],
+      Saturday: ['Morning', 'Afternoon']
+    },
+    preferences: {
+      ageRange: [27, 37],
+      distance: 20,
+      activities: ['Photography', 'Art', 'Music', 'Coffee']
+    }
+  }
+];
 
 export default function DevTools() {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [userStats, setUserStats] = useState({});
+  const [showSplitView, setShowSplitView] = useState(false);
   const navigate = useNavigate();
   const { currentUser, switchToTestUser } = useAuth();
 
@@ -143,22 +191,46 @@ export default function DevTools() {
     }
   };
 
-  const handleSwitchUser = async (userId) => {
-    setIsLoading(true);
+  const handleSwitchUser = async (userData) => {
     try {
-      await switchToTestUser(userId);
-      setCurrentUserId(userId);
+      setIsLoading(true);
       
-      // Automatically seed data for this user
-      await populateUserData(userId);
-      await populateMatches(userId);
+      // Try to sign in first
+      try {
+        await signInWithEmailAndPassword(auth, userData.email, userData.password);
+      } catch (error) {
+        // If sign in fails, create the user
+        if (error.code === 'auth/user-not-found') {
+          await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+        } else {
+          throw error;
+        }
+      }
+
+      // Get the current user after sign in/up
+      const user = auth.currentUser;
+      if (!user) throw new Error('No user after authentication');
+
+      // Check if user data exists
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
       
-      toast.success(`Switched to ${SAMPLE_PROFILES.find(p => p.id === userId)?.basicInfo?.name || 'user'} with test data`);
-      navigate('/matches');
+      // If user data doesn't exist, create it
+      if (!userDoc.exists()) {
+        await setDoc(doc(db, 'users', user.uid), {
+          basicInfo: userData.basicInfo,
+          activities: userData.activities,
+          availability: userData.availability,
+          preferences: userData.preferences,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+
+      toast.success(`Switched to ${userData.basicInfo.name}`);
+      setIsLoading(false);
     } catch (error) {
       console.error('Error switching user:', error);
       toast.error('Failed to switch user');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -187,8 +259,12 @@ export default function DevTools() {
       const randomMatch = matchesSnap.docs[Math.floor(Math.random() * matchesSnap.docs.length)];
       const matchData = randomMatch.data();
       const otherUserId = matchData.participants.find(id => id !== currentUserId);
+
+      // Get the other user's data
+      const otherUserDoc = await getDoc(doc(db, 'users', otherUserId));
+      const otherUserData = otherUserDoc.data();
       
-      // Create a date request
+      // Create a date request with all necessary fields
       const dateRequestsRef = collection(db, 'dateRequests');
       const dateRequestData = {
         matchId: randomMatch.id,
@@ -197,14 +273,20 @@ export default function DevTools() {
         participants: [currentUserId, otherUserId],
         status: 'pending',
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        lastUpdated: serverTimestamp(),
+        dateDetails: {
+          activity: otherUserData.activities[0] || 'Coffee',
+          day: Object.keys(otherUserData.availability)[0] || 'Monday',
+          time: otherUserData.availability[Object.keys(otherUserData.availability)[0]][0] || 'Morning',
+          venue: 'Local Venue'
+        }
       };
       
       await addDoc(dateRequestsRef, dateRequestData);
       
       toast.success('Date request created successfully!');
       fetchUserStats(currentUserId);
-      navigate('/matches');
+      navigate('/matches?view=requests');
     } catch (error) {
       console.error('Error creating date request:', error);
       toast.error('Error creating date request. Check console for details.');
@@ -288,17 +370,18 @@ export default function DevTools() {
         <div>
           <h4 className="font-medium text-gray-700 mb-2">Test Users</h4>
           <div className="space-y-2 max-h-40 overflow-y-auto">
-            {SAMPLE_PROFILES.map((profile) => (
+            {TEST_USERS.map((user, index) => (
               <button
-                key={profile.id}
-                onClick={() => handleSwitchUser(profile.id)}
+                key={user.email}
+                onClick={() => handleSwitchUser(user)}
+                disabled={isLoading}
                 className={`w-full text-left px-3 py-2 text-sm rounded-md ${
-                  currentUserId === profile.id
+                  currentUserId === user.email
                     ? 'bg-rose-100 text-rose-700'
                     : 'text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                {profile.basicInfo.name} ({profile.id})
+                {user.basicInfo.name} ({index + 1})
               </button>
             ))}
           </div>
@@ -306,6 +389,12 @@ export default function DevTools() {
 
         <div className="space-y-2">
           <h4 className="font-medium text-gray-700">Database Actions</h4>
+          <button
+            onClick={() => setShowSplitView(true)}
+            className="w-full px-4 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50"
+          >
+            Open Split View
+          </button>
           <button
             onClick={handleQuickSetupAll}
             disabled={isLoading}

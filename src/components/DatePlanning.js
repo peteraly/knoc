@@ -77,6 +77,7 @@ const ACTIVITIES = [
 const getFirstName = (fullName) => fullName.split(' ')[0];
 
 const STEPS = {
+  EVENT: 0,
   DAY: 1,
   TIME: 2,
   ACTIVITY: 3,
@@ -126,6 +127,7 @@ export default function DatePlanning({ isNewDate = false }) {
   const [dateRequest, setDateRequest] = useState(null);
   const [isRecipient, setIsRecipient] = useState(false);
   const [requestId, setRequestId] = useState(null);
+  const [matchId, setMatchId] = useState(profile?.id || '');
   const [overlappingSlots, setOverlappingSlots] = useState({});
   const [currentUserAvailability, setCurrentUserAvailability] = useState(null);
   const [selectedLocation, setSelectedLocation] = useState(null);
@@ -141,6 +143,10 @@ export default function DatePlanning({ isNewDate = false }) {
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [sharedEvents, setSharedEvents] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [autoSuggest, setAutoSuggest] = useState(true);
+  const [suggestedDate, setSuggestedDate] = useState(null);
 
   // Calculate overlapping availability using useMemo
   const calculateOverlappingSlots = useMemo(() => {
@@ -155,8 +161,12 @@ export default function DatePlanning({ isNewDate = false }) {
     const overlapping = {};
     
     DAYS.forEach(day => {
-      const userPeriods = currentUserAvailability[day] || [];
-      const matchPeriods = profile.availability[day] || [];
+      // Normalize case for comparison
+      const normalizedDay = day.toLowerCase();
+      const userPeriods = (currentUserAvailability[normalizedDay] || currentUserAvailability[day] || [])
+        .map(period => period.toLowerCase());
+      const matchPeriods = (profile.availability[normalizedDay] || profile.availability[day] || [])
+        .map(period => period.toLowerCase());
       
       if (userPeriods.length > 0 && matchPeriods.length > 0) {
         // Find overlapping periods (morning, afternoon, evening)
@@ -165,8 +175,8 @@ export default function DatePlanning({ isNewDate = false }) {
         );
         
         if (overlappingPeriods.length > 0) {
-          overlapping[day] = overlappingPeriods;
-          console.log(`Found overlapping periods for ${day}:`, overlappingPeriods);
+          overlapping[normalizedDay] = overlappingPeriods;
+          console.log(`Found overlapping periods for ${normalizedDay}:`, overlappingPeriods);
         }
       }
     });
@@ -244,8 +254,12 @@ export default function DatePlanning({ isNewDate = false }) {
       return () => unsubscribe();
     }
 
+    if (location.state?.sharedEvents) {
+      setSharedEvents(location.state.sharedEvents);
+    }
+
     setLoading(false);
-  }, [profile, location.state?.requestId, currentUser?.uid, navigate, returnTo, isNewDate]);
+  }, [profile, location.state?.requestId, currentUser?.uid, navigate, returnTo, isNewDate, location.state]);
 
   // Update overlapping slots when availability changes
   useEffect(() => {
@@ -254,6 +268,30 @@ export default function DatePlanning({ isNewDate = false }) {
       setLoading(false);
     }
   }, [currentUserAvailability, profile?.availability, calculateOverlappingSlots]);
+
+  useEffect(() => {
+    // Auto-suggest a date if there are shared events
+    if (autoSuggest && sharedEvents.length > 0 && !suggestedDate) {
+      const event = sharedEvents[0];
+      setSuggestedDate({
+        eventId: event.id,
+        title: event.title,
+        date: event.date,
+        time: event.time,
+        location: event.location,
+        coordinates: event.coordinates
+      });
+      setSelectedEvent(event);
+      setSelectedDay(format(new Date(event.date), 'EEEE').toLowerCase());
+      setSelectedTime(event.time);
+      setSelectedLocation({
+        longitude: event.coordinates[0],
+        latitude: event.coordinates[1],
+        address: event.location
+      });
+      setCurrentStep(STEPS.ACTIVITY);
+    }
+  }, [autoSuggest, sharedEvents, suggestedDate]);
 
   const handleNext = () => {
     if (currentStep === STEPS.DAY && selectedDay) {
@@ -525,6 +563,14 @@ export default function DatePlanning({ isNewDate = false }) {
     }
   };
 
+  const handleDaySelect = (day) => {
+    const hasAvailability = overlappingSlots[day]?.length > 0;
+    if (hasAvailability) {
+      setSelectedDay(day);
+      handleNext();
+    }
+  };
+
   const renderLocationStep = () => (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-gray-900">Select Location</h2>
@@ -666,103 +712,151 @@ export default function DatePlanning({ isNewDate = false }) {
     </div>
   );
 
-  // Simplified handleCreateRequest function that doesn't require authentication
-  const handleCreateRequest = async () => {
+  // Modify the handleCreateRequest function
+  const handleSubmit = async () => {
     try {
-      // Check if we have a selected location
-      if (!selectedVenue && !selectedLocation) {
-        toast.error('Please select a location on the map');
-        return;
+      setLoading(true);
+      
+      if (!currentUser?.uid || !profile?.id || !selectedLocation) {
+        throw new Error('Missing required data for date request');
       }
 
-      const dateRequest = {
-        profile: profile,
-        dateDetails: {
-          day: selectedDay,
-          time: selectedTime,
-          activity: selectedActivity,
-          venue: selectedVenue ? selectedVenue.name : 'Custom Location',
-          location: selectedVenue ? selectedVenue.address : 'Selected on map',
-          coordinates: selectedVenue ? selectedVenue.coordinates : [selectedLocation.longitude, selectedLocation.latitude]
-        },
-        status: 'pending',
-        createdAt: new Date().toISOString()
+      // Create the date details object
+      const dateDetails = {
+        day: selectedDay,
+        time: selectedTime,
+        activity: selectedActivity,
+        venue: selectedLocation.address,
+        coordinates: [selectedLocation.longitude, selectedLocation.latitude]
       };
-
-      // Store in localStorage
-      const existingRequests = JSON.parse(localStorage.getItem('dateRequests') || '[]');
-      existingRequests.push(dateRequest);
-      localStorage.setItem('dateRequests', JSON.stringify(existingRequests));
-
+      
+      // Create the date request document
+      const dateRequest = {
+        senderId: currentUser.uid,
+        recipientId: profile.id,
+        status: 'pending',
+        dateDetails,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        participants: [currentUser.uid, profile.id]
+      };
+      
+      console.log('Creating date request:', dateRequest);
+      
+      // Add to Firestore
+      const dateRequestRef = await addDoc(collection(db, 'dateRequests'), dateRequest);
+      
+      // Create or update match document
+      const matchDocId = [currentUser.uid, profile.id].sort().join('_');
+      const matchRef = doc(db, 'matches', matchDocId);
+      
+      // Check if match document exists
+      const matchDoc = await getDoc(matchRef);
+      
+      if (!matchDoc.exists()) {
+        // Create new match document if it doesn't exist
+        await setDoc(matchRef, {
+          users: [currentUser.uid, profile.id],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          hasScheduledDate: true,
+          lastDateRequestId: dateRequestRef.id,
+          status: 'active'
+        });
+      } else {
+        // Update existing match document
+        await updateDoc(matchRef, {
+          hasScheduledDate: true,
+          lastDateRequestId: dateRequestRef.id,
+          updatedAt: serverTimestamp()
+        });
+      }
+      
       toast.success('Date request sent successfully!');
-      navigate(returnTo, { replace: true });
+      navigate('/matches', { 
+        state: { 
+          view: 'requests',
+          justSentRequest: true,
+          requestId: dateRequestRef.id 
+        }
+      });
     } catch (error) {
       console.error('Error creating date request:', error);
       toast.error('Failed to send date request. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Render different views based on request status
-  if (dateRequest?.status === 'rejected') {
-    return (
-      <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-lg mx-auto">
-          <div className="bg-white rounded-xl shadow-sm p-6 text-center">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Date Request Declined</h2>
-            <p className="text-gray-600 mb-6">This date request has been declined.</p>
-            <button
-              onClick={() => navigate('/matches')}
-              className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200"
-            >
-              Back to Matches
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Modify the renderEventStep function
+  const renderEventStep = () => (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-gray-900">Select Event</h2>
+      <p className="text-gray-600">Choose an event you both might enjoy</p>
 
-  if (dateRequest?.status === 'confirmed') {
-    return (
-      <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-lg mx-auto">
-          <div className="bg-white rounded-xl shadow-sm p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Date Confirmed!</h2>
-            <div className="space-y-4">
-              <div className="bg-green-50 rounded-lg p-4">
-                <p className="text-green-800">
-                  Your date is set for {dateRequest.dateDetails.day} at {dateRequest.dateDetails.time}
-                </p>
-                <p className="text-green-700 mt-2">
-                  Activity: {dateRequest.dateDetails.activity}
-                </p>
-                {dateRequest.dateDetails.message && (
-                  <p className="text-green-700 mt-2 italic">
-                    "{dateRequest.dateDetails.message}"
-                  </p>
-                )}
-              </div>
-              <div className="bg-blue-50 rounded-lg p-4">
-                <p className="text-blue-800 font-medium">Confirmation Code</p>
-                <p className="text-blue-900 text-2xl font-mono mt-2">
-                  {dateRequest.dateDetails.confirmationCode}
-                </p>
-                <p className="text-blue-700 text-sm mt-2">
-                  Share this code with your date after meeting to confirm the date happened!
-                </p>
-              </div>
-            </div>
+      {suggestedDate && (
+        <div className="bg-rose-50 p-4 rounded-lg border border-rose-200 mb-4">
+          <h3 className="font-medium text-rose-800">Suggested Date</h3>
+          <p className="text-rose-700">{suggestedDate.title}</p>
+          <p className="text-sm text-rose-600">
+            {suggestedDate.date} • {suggestedDate.time} • {suggestedDate.location}
+          </p>
+          <div className="mt-3 flex space-x-3">
             <button
-              onClick={() => navigate('/matches')}
-              className="w-full mt-6 px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-semibold hover:bg-gray-200"
+              onClick={handleSubmit}
+              className="bg-rose-500 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-600"
             >
-              Back to Matches
+              Confirm This Date
+            </button>
+            <button
+              onClick={() => setSuggestedDate(null)}
+              className="text-rose-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-100"
+            >
+              Choose Different
             </button>
           </div>
         </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4">
+        <button
+          onClick={() => {
+            setSelectedEvent(null);
+            setCurrentStep(STEPS.DAY);
+          }}
+          className="p-4 rounded-lg border-2 border-dashed border-gray-300 hover:border-rose-500 text-left"
+        >
+          <div className="font-medium text-gray-900">Plan Custom Date</div>
+          <div className="text-sm text-gray-500">Choose your own time and place</div>
+        </button>
+
+        {sharedEvents.map(event => (
+          <button
+            key={event.id}
+            onClick={() => {
+              setSelectedEvent(event);
+              // Pre-fill date and time based on event
+              setSelectedDay(format(new Date(event.date), 'EEEE').toLowerCase());
+              setSelectedTime(event.time);
+              setSelectedLocation({
+                longitude: event.coordinates[0],
+                latitude: event.coordinates[1],
+                address: event.location
+              });
+              setCurrentStep(STEPS.ACTIVITY);
+            }}
+            className="p-4 rounded-lg border border-gray-200 hover:border-rose-500 text-left"
+          >
+            <div className="font-medium text-gray-900">{event.title}</div>
+            <div className="text-sm text-gray-500">
+              {event.date} • {event.time} • {event.location}
+            </div>
+            <div className="mt-2 text-sm text-gray-600">{event.description}</div>
+          </button>
+        ))}
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <motion.div
@@ -799,7 +893,8 @@ export default function DatePlanning({ isNewDate = false }) {
 
         {/* Step Content */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          {currentStep === STEPS.DAY && (
+          {currentStep === STEPS.EVENT && renderEventStep()}
+          {currentStep === STEPS.DAY && !selectedEvent && (
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-medium mb-4">Select Day</h3>
@@ -811,8 +906,8 @@ export default function DatePlanning({ isNewDate = false }) {
                         key={day}
                         type="button"
                         disabled={!hasAvailability}
-                        onClick={() => setSelectedDay(day)}
-                        className={`p-3 rounded-lg text-left capitalize ${
+                        onClick={() => handleDaySelect(day)}
+                        className={`p-3 rounded-lg text-left capitalize transition-colors duration-200 ${
                           selectedDay === day
                             ? 'bg-rose-500 text-white'
                             : hasAvailability
@@ -820,16 +915,28 @@ export default function DatePlanning({ isNewDate = false }) {
                             : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         }`}
                       >
-                        {day}
+                        <div className="flex items-center justify-between">
+                          <span>{day}</span>
+                          {hasAvailability && (
+                            <span className="text-xs">
+                              {overlappingSlots[day].length} time slot{overlappingSlots[day].length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
                       </button>
                     );
                   })}
                 </div>
+                {!Object.keys(overlappingSlots).length && (
+                  <p className="mt-4 text-sm text-gray-500 text-center">
+                    No overlapping availability found. Please update your availability in your profile settings.
+                  </p>
+                )}
               </div>
             </div>
           )}
 
-          {currentStep === STEPS.TIME && (
+          {currentStep === STEPS.TIME && !selectedEvent && (
             <div className="space-y-6">
               <div>
                 <h3 className="text-lg font-medium mb-4">Select Time</h3>
@@ -860,7 +967,7 @@ export default function DatePlanning({ isNewDate = false }) {
             </div>
           )}
 
-          {currentStep === STEPS.ACTIVITY && (
+          {currentStep === STEPS.ACTIVITY && !selectedEvent && (
             <div>
               <h3 className="text-lg font-medium mb-4">Select Activity</h3>
               <div className="grid grid-cols-2 gap-2">
@@ -882,7 +989,7 @@ export default function DatePlanning({ isNewDate = false }) {
             </div>
           )}
 
-          {currentStep === STEPS.LOCATION && renderLocationStep()}
+          {currentStep === STEPS.LOCATION && !selectedEvent && renderLocationStep()}
         </div>
 
         {/* Navigation Buttons */}
@@ -895,7 +1002,7 @@ export default function DatePlanning({ isNewDate = false }) {
           </button>
           {currentStep === STEPS.LOCATION ? (
             <button
-              onClick={handleCreateRequest}
+              onClick={handleSubmit}
               disabled={loading}
               className="px-6 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 disabled:opacity-50"
             >

@@ -1,22 +1,18 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { auth, googleProvider } from '../utils/firebase';
 import { 
+  getAuth, 
   signInWithEmailAndPassword, 
-  signInWithPopup,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
   createUserWithEmailAndPassword
 } from 'firebase/auth';
-import toast from 'react-hot-toast';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from '../utils/firebase';
+import { toast } from 'react-hot-toast';
 
-const AuthContext = createContext({
-  currentUser: null,
-  loading: true,
-  signIn: async () => {},
-  signInWithGoogle: async () => {},
-  signOut: async () => {},
-  createTestUser: async () => {}
-});
+const AuthContext = createContext();
 
 export function useAuth() {
   return useContext(AuthContext);
@@ -25,97 +21,151 @@ export function useAuth() {
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const auth = getAuth();
+
+  async function signIn(email, password) {
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+      
+      if (!userDoc.exists()) {
+        throw new Error('User document not found');
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Sign in error:', error);
+      throw error;
+    }
+  }
+
+  async function signInWithGoogle() {
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      
+      // Check if user document exists
+      const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+      
+      if (!userDoc.exists()) {
+        // Create new user document
+        await setDoc(doc(db, 'users', result.user.uid), {
+          basicInfo: {
+            name: result.user.displayName || 'New User',
+            email: result.user.email,
+            photoURL: result.user.photoURL,
+          },
+          onboardingComplete: false,
+          onboardingStep: 'start',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Google sign in error:', error);
+      throw error;
+    }
+  }
+
+  async function createTestUser() {
+    if (process.env.NODE_ENV !== 'development') {
+      console.warn('Test user creation attempted in non-development environment');
+      return;
+    }
+
+    try {
+      // Create or sign in test user
+      let userCredential;
+      try {
+        userCredential = await signInWithEmailAndPassword(auth, 'test@example.com', 'Test123!');
+      } catch (error) {
+        if (error.code === 'auth/user-not-found') {
+          userCredential = await createUserWithEmailAndPassword(auth, 'test@example.com', 'Test123!');
+        } else {
+          throw error;
+        }
+      }
+
+      // Create or update test user document
+      const testUserRef = doc(db, 'users', userCredential.user.uid);
+      const testUserDoc = await getDoc(testUserRef);
+
+      if (!testUserDoc.exists()) {
+        await setDoc(testUserRef, {
+          basicInfo: {
+            name: 'Test User',
+            email: 'test@example.com',
+            age: 25,
+            gender: 'Other',
+            location: 'San Francisco, CA',
+            bio: 'Test user for development'
+          },
+          role: 'admin',
+          activities: ['Coffee & Tea', 'Outdoor Walks', 'Museums & Galleries'],
+          availability: {
+            monday: ['morning', 'evening'],
+            wednesday: ['afternoon', 'evening'],
+            friday: ['morning', 'afternoon'],
+            saturday: ['afternoon', 'evening']
+          },
+          preferences: {
+            venue: 'public',
+            activityLevel: 'casual',
+            timePreference: 'daytime'
+          },
+          onboardingComplete: true,
+          onboardingStep: 'complete',
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      } else {
+        // Update existing user to have admin role
+        await setDoc(testUserRef, { role: 'admin' }, { merge: true });
+      }
+
+      return userCredential;
+    } catch (error) {
+      console.error('Error creating test user:', error);
+      toast.error('Failed to create test user');
+      throw error;
+    }
+  }
+
+  function signOut() {
+    return firebaseSignOut(auth);
+  }
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists()) {
+            setCurrentUser({ ...user, ...userDoc.data() });
+          } else {
+            console.warn('User document not found for:', user.uid);
+            setCurrentUser(user);
+          }
+        } catch (error) {
+          console.error('Error fetching user data:', error);
+          setCurrentUser(user);
+        }
+      } else {
+        setCurrentUser(null);
+      }
       setLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
-
-  const signIn = async (email, password) => {
-    try {
-      return await signInWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-      console.error('Sign in error:', error);
-      if (error.code === 'auth/operation-not-allowed') {
-        toast.error('Email/Password sign-in is not enabled. Please use Google sign-in instead.');
-      } else {
-        toast.error('Failed to sign in. Please try again.');
-      }
-      throw error;
-    }
-  };
-
-  const signInWithGoogle = async () => {
-    try {
-      return await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error('Google sign in error:', error);
-      toast.error('Failed to sign in with Google. Please try again.');
-      throw error;
-    }
-  };
-
-  const signOut = async () => {
-    try {
-      await firebaseSignOut(auth);
-      toast.success('Signed out successfully');
-    } catch (error) {
-      console.error('Sign out error:', error);
-      toast.error('Failed to sign out. Please try again.');
-      throw error;
-    }
-  };
-
-  const createTestUser = async () => {
-    if (process.env.NODE_ENV === 'development') {
-      try {
-        const email = 'test@example.com';
-        const password = 'Test123!';
-        
-        // Try to sign in with Google instead of email/password
-        try {
-          await signInWithGoogle();
-          console.log('Signed in with Google successfully');
-          return;
-        } catch (googleError) {
-          console.error('Google sign in failed:', googleError);
-          
-          // If Google sign-in fails, try email/password as fallback
-          try {
-            await signIn(email, password);
-            console.log('Test user exists, signed in successfully');
-          } catch (error) {
-            // If user doesn't exist, create it
-            if (error.code === 'auth/user-not-found') {
-              await createUserWithEmailAndPassword(auth, email, password);
-              console.log('Test user created successfully');
-            } else if (error.code === 'auth/operation-not-allowed') {
-              toast.error('Please enable Email/Password authentication in Firebase Console');
-              throw error;
-            } else {
-              throw error;
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error with test user:', error);
-        throw error;
-      }
-    } else {
-      throw new Error('Test user creation is only available in development');
-    }
-  };
+    return unsubscribe;
+  }, [auth]);
 
   const value = {
     currentUser,
-    loading,
     signIn,
-    signInWithGoogle,
     signOut,
+    signInWithGoogle,
     createTestUser
   };
 

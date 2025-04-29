@@ -40,11 +40,10 @@ export const sampleUsers = {
     ],
     facePreferences: [1, 3, 5],
     availability: {
-      Monday: ['Evening'],
-      Wednesday: ['Morning', 'Evening'],
-      Friday: ['Afternoon', 'Evening'],
-      Saturday: ['Morning', 'Afternoon'],
-      Sunday: ['Afternoon']
+      monday: ['morning', 'evening'],
+      wednesday: ['afternoon', 'evening'],
+      friday: ['morning', 'afternoon'],
+      saturday: ['afternoon', 'evening']
     },
     onboardingComplete: true,
     onboardingStep: 'complete',
@@ -74,13 +73,10 @@ export const sampleUsers = {
     ],
     facePreferences: [2, 4, 6],
     availability: {
-      Monday: ['Morning', 'Evening'],
-      Tuesday: ['Morning', 'Evening'],
-      Wednesday: ['Morning', 'Evening'],
-      Thursday: ['Morning', 'Evening'],
-      Friday: ['Morning', 'Evening'],
-      Saturday: ['Afternoon'],
-      Sunday: ['Afternoon']
+      monday: ['morning', 'evening'],
+      wednesday: ['afternoon', 'evening'],
+      friday: ['morning', 'afternoon'],
+      saturday: ['afternoon', 'evening']
     },
     onboardingComplete: true,
     onboardingStep: 'complete',
@@ -110,13 +106,10 @@ export const sampleUsers = {
     ],
     facePreferences: [1, 3, 5],
     availability: {
-      Monday: ['Evening'],
-      Tuesday: ['Evening'],
-      Wednesday: ['Evening'],
-      Thursday: ['Evening'],
-      Friday: ['Evening'],
-      Saturday: ['Morning', 'Afternoon'],
-      Sunday: ['Morning', 'Afternoon']
+      monday: ['morning', 'evening'],
+      wednesday: ['afternoon', 'evening'],
+      friday: ['morning', 'afternoon'],
+      saturday: ['afternoon', 'evening']
     },
     onboardingComplete: true,
     onboardingStep: 'complete',
@@ -146,13 +139,10 @@ export const sampleUsers = {
     ],
     facePreferences: [2, 4, 6],
     availability: {
-      Monday: ['Morning', 'Afternoon'],
-      Tuesday: ['Morning', 'Afternoon'],
-      Wednesday: ['Morning', 'Afternoon'],
-      Thursday: ['Morning', 'Afternoon'],
-      Friday: ['Morning', 'Afternoon'],
-      Saturday: ['Morning'],
-      Sunday: ['Morning']
+      monday: ['morning', 'evening'],
+      wednesday: ['afternoon', 'evening'],
+      friday: ['morning', 'afternoon'],
+      saturday: ['afternoon', 'evening']
     },
     onboardingComplete: true,
     onboardingStep: 'complete',
@@ -182,13 +172,10 @@ export const sampleUsers = {
     ],
     facePreferences: [1, 3, 5],
     availability: {
-      Monday: ['Evening'],
-      Tuesday: ['Evening'],
-      Wednesday: ['Evening'],
-      Thursday: ['Evening'],
-      Friday: ['Evening'],
-      Saturday: ['Afternoon', 'Evening'],
-      Sunday: ['Afternoon', 'Evening']
+      monday: ['morning', 'evening'],
+      wednesday: ['afternoon', 'evening'],
+      friday: ['morning', 'afternoon'],
+      saturday: ['afternoon', 'evening']
     },
     onboardingComplete: true,
     onboardingStep: 'complete',
@@ -218,13 +205,10 @@ export const sampleUsers = {
     ],
     facePreferences: [1, 3, 5],
     availability: {
-      Monday: ['Evening'],
-      Tuesday: ['Evening'],
-      Wednesday: ['Evening'],
-      Thursday: ['Evening'],
-      Friday: ['Evening'],
-      Saturday: ['Afternoon', 'Evening'],
-      Sunday: ['Afternoon', 'Evening']
+      monday: ['morning', 'evening'],
+      wednesday: ['afternoon', 'evening'],
+      friday: ['morning', 'afternoon'],
+      saturday: ['afternoon', 'evening']
     },
     onboardingComplete: true,
     onboardingStep: 'complete',
@@ -254,13 +238,10 @@ export const sampleUsers = {
     ],
     facePreferences: [2, 4, 6],
     availability: {
-      Monday: ['Morning', 'Evening'],
-      Tuesday: ['Morning', 'Evening'],
-      Wednesday: ['Morning', 'Evening'],
-      Thursday: ['Morning', 'Evening'],
-      Friday: ['Morning', 'Evening'],
-      Saturday: ['Morning', 'Afternoon'],
-      Sunday: ['Morning', 'Afternoon']
+      monday: ['morning', 'evening'],
+      wednesday: ['afternoon', 'evening'],
+      friday: ['morning', 'afternoon'],
+      saturday: ['afternoon', 'evening']
     },
     onboardingComplete: true,
     onboardingStep: 'complete',
@@ -268,118 +249,162 @@ export const sampleUsers = {
   }
 };
 
-export const SAMPLE_PROFILES = [
+// Sample profiles for seeding
+const SAMPLE_PROFILES = [
   {
-    id: 'maya_patel',
-    basicInfo: {
-      name: 'Maya Patel',
-      age: 29,
-      location: 'San Francisco, CA',
-      photoURL: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330',
-      gender: 'woman',
-      pronouns: 'she/her'
-    },
-    bio: 'Tech professional by day, yoga instructor by night. Love exploring new coffee shops and hiking trails. Always up for an adventure!',
-    interests: ['yoga', 'hiking', 'coffee', 'tech', 'meditation', 'photography'],
-    activities: ['Morning yoga session', 'Weekend hiking adventures', 'Coffee shop hopping'],
-    spotifyArtists: ['Taylor Swift', 'The Weeknd', 'Dua Lipa'],
-    favoriteSpots: ['Dolores Park', 'Blue Bottle Coffee', 'Lands End Trail']
+    id: 'profile1',
+    name: 'Sarah Johnson',
+    age: 28,
+    photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330',
+    bio: 'Adventure seeker and coffee enthusiast. Love hiking, photography, and trying new restaurants.',
+    interests: ['Hiking', 'Photography', 'Coffee', 'Travel', 'Cooking'],
+    availability: {
+      Monday: ['Morning', 'Evening'],
+      Wednesday: ['Afternoon', 'Evening'],
+      Friday: ['Morning', 'Afternoon', 'Evening'],
+      Saturday: ['Morning', 'Afternoon']
+    }
   },
   {
-    id: 'sarah_johnson',
-    basicInfo: {
-      name: 'Sarah Johnson',
-      age: 28,
-      location: 'San Francisco, CA',
-      photoURL: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80',
-      gender: 'woman',
-      pronouns: 'she/her'
-    },
-    bio: 'Adventure seeker and coffee enthusiast. Love trying new restaurants and exploring the city. Looking for someone to share adventures with!',
-    interests: ['hiking', 'coffee', 'food', 'travel', 'photography', 'fitness'],
-    activities: ['Weekend brunches', 'Urban hiking', 'Food truck adventures'],
-    spotifyArtists: ['Lorde', 'Arctic Monkeys', 'Halsey'],
-    favoriteSpots: ['Ferry Building', 'Golden Gate Park', 'Sightglass Coffee']
+    id: 'profile2',
+    name: 'Michael Chen',
+    age: 32,
+    photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e',
+    bio: 'Tech entrepreneur by day, musician by night. Always looking for new experiences and connections.',
+    interests: ['Technology', 'Music', 'Fitness', 'Reading', 'Art'],
+    availability: {
+      Tuesday: ['Morning', 'Evening'],
+      Thursday: ['Afternoon', 'Evening'],
+      Saturday: ['Morning', 'Afternoon', 'Evening'],
+      Sunday: ['Morning', 'Afternoon']
+    }
   },
   {
-    id: 'michael_chen',
-    basicInfo: {
-      name: 'Michael Chen',
-      age: 31,
-      location: 'San Francisco, CA',
-      photoURL: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
-      gender: 'man',
-      pronouns: 'he/him'
-    },
-    bio: 'Tech professional and amateur chef. Love cooking, hiking, and exploring new restaurants. Always up for a good conversation over coffee.',
-    interests: ['cooking', 'hiking', 'tech', 'food', 'photography', 'fitness'],
-    activities: ['Cooking classes', 'Weekend hikes', 'Foodie adventures'],
-    spotifyArtists: ['Drake', 'The Weeknd', 'Post Malone'],
-    favoriteSpots: ['Ferry Building', 'Lands End Trail', 'Blue Bottle Coffee']
+    id: 'profile3',
+    name: 'Emma Davis',
+    age: 29,
+    photo: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80',
+    bio: 'Yoga instructor and foodie. Passionate about wellness, cooking, and meeting new people.',
+    interests: ['Yoga', 'Cooking', 'Wellness', 'Food', 'Travel'],
+    availability: {
+      Monday: ['Morning', 'Afternoon'],
+      Wednesday: ['Morning', 'Evening'],
+      Friday: ['Afternoon', 'Evening'],
+      Sunday: ['Morning', 'Afternoon']
+    }
   },
   {
-    id: 'emily_rodriguez',
-    basicInfo: {
-      name: 'Emily Rodriguez',
-      age: 27,
-      location: 'San Francisco, CA',
-      photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb',
-      gender: 'woman',
-      pronouns: 'she/her'
-    },
-    bio: 'Art enthusiast and coffee lover. Enjoy exploring museums and trying new cafes. Looking for someone to share creative adventures with!',
-    interests: ['art', 'coffee', 'museums', 'photography', 'travel', 'writing'],
-    activities: ['Museum visits', 'Coffee shop exploring', 'Art gallery hopping'],
-    spotifyArtists: ['Billie Eilish', 'Taylor Swift', 'Lana Del Rey'],
-    favoriteSpots: ['SF MOMA', 'Blue Bottle Coffee', 'Palace of Fine Arts']
+    id: 'profile4',
+    name: 'James Wilson',
+    age: 30,
+    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d',
+    bio: 'Music producer and vinyl collector. Looking for concert buddies and deep conversations over craft beer.',
+    interests: ['Music', 'Concerts', 'Vinyl Records', 'Craft Beer', 'Art'],
+    availability: {
+      Tuesday: ['Evening'],
+      Thursday: ['Morning', 'Evening'],
+      Saturday: ['Morning', 'Afternoon'],
+      Sunday: ['Afternoon']
+    }
   },
   {
-    id: 'james_wilson',
-    basicInfo: {
-      name: 'James Wilson',
-      age: 30,
-      location: 'San Francisco, CA',
-      photoURL: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e',
-      gender: 'man',
-      pronouns: 'he/him'
-    },
-    bio: 'Tech entrepreneur and fitness enthusiast. Love hiking, running, and exploring new restaurants. Always up for an adventure!',
-    interests: ['fitness', 'hiking', 'tech', 'food', 'travel', 'photography'],
-    activities: ['Morning runs', 'Weekend hikes', 'Restaurant exploring'],
-    spotifyArtists: ['Drake', 'The Weeknd', 'Kendrick Lamar'],
-    favoriteSpots: ['Golden Gate Park', 'Lands End Trail', 'Ferry Building']
+    id: 'profile5',
+    name: 'Alex Kim',
+    age: 27,
+    photo: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d',
+    bio: 'Game developer and board game enthusiast. Looking for someone to share laughs and adventures with.',
+    interests: ['Gaming', 'Board Games', 'Anime', 'Technology', 'Food'],
+    availability: {
+      Monday: ['Morning', 'Evening'],
+      Wednesday: ['Afternoon', 'Evening'],
+      Friday: ['Morning', 'Afternoon'],
+      Saturday: ['Afternoon', 'Evening']
+    }
   },
   {
-    id: 'alex_kim',
-    basicInfo: {
-      name: 'Alex Kim',
-      age: 29,
-      location: 'San Francisco, CA',
-      photoURL: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d',
-      gender: 'man',
-      pronouns: 'he/him'
-    },
-    bio: 'Software engineer and foodie. Love trying new restaurants and exploring the city. Looking for someone to share adventures with!',
-    interests: ['food', 'tech', 'travel', 'photography', 'fitness', 'coffee'],
-    activities: ['Food truck adventures', 'Urban exploring', 'Coffee shop hopping'],
-    spotifyArtists: ['The Weeknd', 'Drake', 'Post Malone'],
-    favoriteSpots: ['Ferry Building', 'Blue Bottle Coffee', 'Golden Gate Park']
+    id: 'profile6',
+    name: 'Jordan Taylor',
+    age: 28,
+    photo: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6',
+    bio: 'Environmental scientist and rock climbing instructor. Passionate about sustainability and outdoor adventures.',
+    interests: ['Rock Climbing', 'Environment', 'Sustainability', 'Hiking', 'Photography'],
+    availability: {
+      Monday: ['Morning', 'Evening'],
+      Wednesday: ['Afternoon', 'Evening'],
+      Friday: ['Morning', 'Afternoon'],
+      Saturday: ['Afternoon', 'Evening']
+    }
+  }
+];
+
+// Sample date requests for seeding
+const SAMPLE_DATE_REQUESTS = [
+  {
+    id: 'request1',
+    from: 'profile1',
+    to: 'profile2',
+    status: 'pending',
+    message: 'Hey! Would love to grab coffee and chat about tech and music sometime!',
+    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
+    proposedDate: {
+      day: 'Friday',
+      time: 'Morning',
+      activity: 'Coffee at Local Cafe'
+    }
   },
   {
-    id: 'jordan_taylor',
-    basicInfo: {
-      name: 'Jordan Taylor',
-      age: 28,
-      location: 'San Francisco, CA',
-      photoURL: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6',
-      gender: 'non-binary',
-      pronouns: 'they/them'
+    id: 'request2',
+    from: 'profile3',
+    to: 'profile4',
+    status: 'pending',
+    message: 'I heard you love music! Would you be interested in checking out the new vinyl shop downtown?',
+    createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
+    proposedDate: {
+      day: 'Saturday',
+      time: 'Afternoon',
+      activity: 'Visit Vinyl Shop'
+    }
+  },
+  {
+    id: 'request3',
+    from: 'profile5',
+    to: 'profile6',
+    status: 'pending',
+    message: 'I see you love rock climbing! Would you be interested in showing me some beginner spots?',
+    createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
+    proposedDate: {
+      day: 'Sunday',
+      time: 'Morning',
+      activity: 'Rock Climbing Session'
+    }
+  }
+];
+
+// Sample confirmed dates for seeding
+const SAMPLE_CONFIRMED_DATES = [
+  {
+    id: 'date1',
+    participants: ['profile1', 'profile3'],
+    status: 'confirmed',
+    date: {
+      day: 'Saturday',
+      time: 'Morning',
+      activity: 'Yoga Class and Coffee'
     },
-    bio: 'Creative professional and outdoor enthusiast. Love hiking, photography, and exploring new cafes. Always up for an adventure!',
-    interests: ['photography', 'hiking', 'coffee', 'art', 'travel', 'fitness'],
-    activities: ['Weekend hikes', 'Coffee shop exploring', 'Photography walks'],
-    spotifyArtists: ['Billie Eilish', 'Lorde', 'Halsey'],
-    favoriteSpots: ['Lands End Trail', 'Blue Bottle Coffee', 'Dolores Park']
+    confirmedAt: new Date(Date.now() - 48 * 60 * 60 * 1000), // 2 days ago
+    location: 'Sunrise Yoga Studio'
+  },
+  {
+    id: 'date2',
+    participants: ['profile2', 'profile5'],
+    status: 'confirmed',
+    date: {
+      day: 'Sunday',
+      time: 'Afternoon',
+      activity: 'Board Game Cafe'
+    },
+    confirmedAt: new Date(Date.now() - 36 * 60 * 60 * 1000), // 1.5 days ago
+    location: 'Game Haven Cafe'
   }
 ];
 
@@ -397,33 +422,6 @@ export const SAMPLE_MATCHES = [
     commonInterests: ['hiking', 'fitness', 'food'],
     commonActivities: ['Weekend hikes', 'Restaurant exploring'],
     matchScore: 90
-  }
-];
-
-export const SAMPLE_DATE_REQUESTS = [
-  {
-    id: 'date_request_1',
-    senderId: 'maya_patel',
-    recipientId: 'michael_chen',
-    status: 'pending',
-    message: 'Would love to grab coffee and chat!',
-    dateDetails: {
-      date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      time: '11:00 AM',
-      venue: 'Blue Bottle Coffee'
-    }
-  },
-  {
-    id: 'date_request_2',
-    senderId: 'sarah_johnson',
-    recipientId: 'james_wilson',
-    status: 'accepted',
-    message: 'How about we check out the new hiking trail?',
-    dateDetails: {
-      date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-      time: '10:00 AM',
-      venue: 'Lands End Trail'
-    }
   }
 ];
 
@@ -683,4 +681,6 @@ export const clearMatches = async (currentUserId) => {
   } catch (error) {
     console.error(`Error clearing matches: ${error}`);
   }
-}; 
+};
+
+export { SAMPLE_PROFILES, SAMPLE_DATE_REQUESTS, SAMPLE_CONFIRMED_DATES }; 

@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
 import { 
   getFirestore,
-  enableIndexedDbPersistence,
+  enableMultiTabIndexedDbPersistence,
   collection,
   addDoc,
   doc,
@@ -12,6 +12,7 @@ import {
   getDoc
 } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import { getStorage } from 'firebase/storage';
 
 // Check for required environment variables
 const requiredEnvVars = {
@@ -41,26 +42,36 @@ if (process.env.NODE_ENV === 'development') {
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: process.env.REACT_APP_FIREBASE_API_KEY || "AIzaSyBkkFF0XhNZeWuDmOfEhsgdfX1VBG7WTas",
-  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || "divercity-dev.firebaseapp.com",
-  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID || "divercity-dev",
-  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || "divercity-dev.appspot.com",
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || "816874969444",
-  appId: process.env.REACT_APP_FIREBASE_APP_ID || "1:816874969444:web:5fd53c4dc6f2b78c645dc9"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID
 };
 
-console.log('Initializing Firebase with config:', {
-  ...firebaseConfig,
-  apiKey: '********************' // Hide API key in logs
-});
+// Log configuration in development
+if (process.env.NODE_ENV === 'development') {
+  console.log('Initializing Firebase with config:', {
+    ...firebaseConfig,
+    apiKey: '********************'
+  });
+}
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const googleProvider = new GoogleAuthProvider();
 
-// Initialize Auth
+// Initialize Firestore with updated persistence settings
+const db = getFirestore(app);
+
+// Initialize Authentication
+const auth = getAuth(app);
+
+// Initialize Storage
+const storage = getStorage(app);
+
+// Initialize Auth Providers
+const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('profile');
 googleProvider.addScope('email');
 googleProvider.setCustomParameters({
@@ -70,35 +81,28 @@ googleProvider.setCustomParameters({
 
 const linkedInProvider = new OAuthProvider('linkedin.com');
 linkedInProvider.addScope('openid');
-linkedInProvider.addScope('profile');
 linkedInProvider.addScope('email');
-linkedInProvider.setCustomParameters({
-  prompt: 'select_account'
-});
 
-// Enable offline persistence with error handling
-enableIndexedDbPersistence(db)
-  .then(() => {
-    console.log('Offline persistence enabled successfully');
-  })
-  .catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
-    } else if (err.code === 'unimplemented') {
-      console.warn('The current browser does not support persistence.');
-    } else {
-      console.error('Error enabling offline persistence:', err);
-    }
-  });
-
-// Initialize Messaging with error handling
+// Initialize Cloud Messaging
 let messaging = null;
 try {
   messaging = getMessaging(app);
   console.log('Firebase Cloud Messaging initialized successfully');
 } catch (error) {
-  console.warn('Error initializing Firebase Cloud Messaging:', error);
-  console.warn('Push notifications may not be available');
+  console.warn('Firebase Cloud Messaging initialization skipped:', error.message);
+}
+
+// Enable persistence after initialization
+if (typeof window !== 'undefined') {
+  enableMultiTabIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Multiple tabs open, persistence can only be enabled in one tab at a time.');
+    } else if (err.code === 'unimplemented') {
+      console.warn('The current browser does not support persistence.');
+    } else {
+      console.error('Error enabling persistence:', err);
+    }
+  });
 }
 
 // Function to request notification permission and get FCM token
@@ -227,6 +231,7 @@ export {
   googleProvider, 
   linkedInProvider, 
   db,
+  storage,
   collection,
   addDoc,
   doc,

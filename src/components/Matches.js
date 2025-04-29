@@ -1,85 +1,36 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../utils/firebase';
-import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, arrayUnion, addDoc, deleteDoc } from 'firebase/firestore';
 import toast from 'react-hot-toast';
 import Profile from './Profile';
 import DiscoveryProfile from './DiscoveryProfile';
 import MapView from './MapView';
+import DateSuggestionModal from './DateSuggestionModal';
+import UserSwitcher from './UserSwitcher';
+import { auth } from '../utils/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import DashboardHeader from './DashboardHeader';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { SAMPLE_PROFILES, SAMPLE_DATE_REQUESTS, SAMPLE_CONFIRMED_DATES } from '../utils/seedData';
 
-// Sample profiles matching seeded test users
-const SAMPLE_PROFILES = [
-  {
-    id: 'maya_patel',
-    photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=800&q=80',
-    basicInfo: {
-      name: 'Maya Patel',
-      age: 28,
-      location: 'San Francisco, CA',
-      bio: 'Tech enthusiast and yoga lover. Always up for trying new restaurants and exploring the city!'
-    },
-    availability: {
-      monday: ['morning', 'evening'],
-      wednesday: ['afternoon'],
-      friday: ['morning', 'afternoon', 'evening'],
-      saturday: ['afternoon', 'evening']
-    },
-    activities: ['coffee', 'fitness', 'dining']
-  },
-  {
-    id: 'sarah_johnson',
-    photo: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=800&q=80',
-    basicInfo: {
-      name: 'Sarah Johnson',
-      age: 27,
-      location: 'San Francisco, CA',
-      bio: 'Coffee enthusiast and hiking lover. Always up for trying new restaurants!'
-    },
-    availability: {
-      monday: ['morning', 'evening'],
-      wednesday: ['afternoon'],
-      friday: ['morning', 'afternoon', 'evening'],
-      saturday: ['afternoon', 'evening']
-    },
-    activities: ['coffee', 'hiking', 'dining']
-  },
-  {
-    id: 'michael_chen',
-    photo: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80',
-    basicInfo: {
-      name: 'Michael Chen',
-      age: 29,
-      location: 'San Francisco, CA',
-      bio: 'Tech professional by day, amateur chef by night. Love exploring the city!'
-    },
-    availability: {
-      tuesday: ['morning', 'afternoon'],
-      thursday: ['evening'],
-      friday: ['morning', 'afternoon'],
-      sunday: ['morning', 'afternoon', 'evening']
-    },
-    activities: ['dining', 'museums', 'music']
-  },
-  {
-    id: 'emily_rodriguez',
-    photo: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=800&q=80',
-    basicInfo: {
-      name: 'Emily Rodriguez',
-      age: 26,
-      location: 'Oakland, CA',
-      bio: 'Art gallery curator and yoga instructor. Always seeking new adventures!'
-    },
-    availability: {
-      monday: ['afternoon'],
-      wednesday: ['morning', 'evening'],
-      thursday: ['afternoon', 'evening'],
-      saturday: ['morning', 'afternoon']
-    },
-    activities: ['museums', 'fitness', 'coffee']
+// Add notification helper function
+const addNotification = async ({ userId, type, message, dateRequestId }) => {
+  try {
+    await addDoc(collection(db, 'notifications'), {
+      userId,
+      type,
+      message,
+      dateRequestId,
+      read: false,
+      createdAt: serverTimestamp()
+    });
+  } catch (error) {
+    console.error('Error adding notification:', error);
   }
-];
+};
 
 const EVENT_CATEGORIES = [
   { id: 'social', label: 'Social', icon: '👥' },
@@ -259,21 +210,159 @@ const LOCAL_SUGGESTIONS = {
   ]
 };
 
-export default function Matches({ currentView: initialView = 'discovery' }) {
+// Test user credentials
+const TEST_USERS = {
+  profile1: {
+    email: 'sarah@test.com',
+    password: 'testpass123'
+  },
+  profile2: {
+    email: 'michael@test.com',
+    password: 'testpass123'
+  },
+  profile3: {
+    email: 'emma@test.com',
+    password: 'testpass123'
+  },
+  profile4: {
+    email: 'james@test.com',
+    password: 'testpass123'
+  },
+  profile5: {
+    email: 'alex@test.com',
+    password: 'testpass123'
+  },
+  profile6: {
+    email: 'jordan@test.com',
+    password: 'testpass123'
+  }
+};
+
+// Add RequestCard component
+const RequestCard = ({ request, type, onAccept, onDecline }) => {
+  // Get the other user's profile (sender for received requests, recipient for sent requests)
+  const otherUserId = type === 'Received' ? request.senderId : request.recipientId;
+  const profile = SAMPLE_PROFILES.find(p => p.id === otherUserId);
+
+  if (!profile) return null;
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-4 mb-4">
+      <div className="flex items-start space-x-4">
+        {/* Profile Photo */}
+        <img
+          src={profile.photo}
+          alt={profile.name}
+          className="w-16 h-16 rounded-full object-cover"
+        />
+        
+        {/* Request Details */}
+        <div className="flex-1">
+          <div className="flex justify-between items-start">
+            <div>
+              <h4 className="font-medium text-gray-900">{profile.name}</h4>
+              <p className="text-sm text-gray-500">{profile.age} years old</p>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-sm ${
+              type === 'Received' ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'
+            }`}>
+              {type}
+            </span>
+          </div>
+
+          {/* Date Details */}
+          {request.dateDetails && (
+            <div className="mt-3 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+              <h5 className="font-medium text-gray-900 mb-2">Proposed Date Details</h5>
+              <div className="space-y-1">
+                <p><span className="font-medium">Activity:</span> {request.dateDetails.activity}</p>
+                <p><span className="font-medium">When:</span> {request.dateDetails.day} at {request.dateDetails.time}</p>
+                <p><span className="font-medium">Where:</span> {request.dateDetails.venue}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons - Only show for received requests */}
+          {type === 'Received' && (
+            <div className="mt-4 space-y-3">
+              <div className="text-sm text-gray-600">
+                Would you like to confirm this date proposal?
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={onAccept}
+                  className="px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600 flex-1 flex items-center justify-center space-x-2"
+                >
+                  <span>Confirm Date</span>
+                  <span className="text-lg">✓</span>
+                </button>
+                <button
+                  onClick={onDecline}
+                  className="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 flex-1 flex items-center justify-center space-x-2"
+                >
+                  <span>Decline</span>
+                  <span className="text-lg">×</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Status for sent requests */}
+          {type === 'Sent' && (
+            <div className="mt-4">
+              <p className="text-sm text-gray-600 italic">
+                Waiting for {profile.name} to confirm...
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Create a context for shared state
+const MatchContext = createContext();
+
+export function MatchProvider({ children }) {
+  const [sharedState, setSharedState] = useState({
+    dateRequests: [],
+    currentView: 'discovery',
+    pendingRequests: [],
+    confirmedRequests: []
+  });
+
+  const updateSharedState = (updates) => {
+    setSharedState(prev => ({
+      ...prev,
+      ...updates
+    }));
+  };
+
+  return (
+    <MatchContext.Provider value={{ sharedState, updateSharedState }}>
+      {children}
+    </MatchContext.Provider>
+  );
+}
+
+export default function Matches({ currentView: initialView = 'discovery', autoLoginUserId, isSplitView }) {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  const [currentView, setCurrentView] = useState(initialView);
-  const [dateRequests, setDateRequests] = useState([]);
-  const [availableProfiles, setAvailableProfiles] = useState([]);
-  const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeDate, setActiveDate] = useState(null);
-  const [pendingRequests, setPendingRequests] = useState([]);
+  const { sharedState, updateSharedState } = useContext(MatchContext);
+  const [dateRequests, setDateRequests] = useState([]);
+  const [profiles, setProfiles] = useState([]);
+  const [currentProfileIndex, setCurrentProfileIndex] = useState(0);
+  const [profilesWithPendingRequests, setProfilesWithPendingRequests] = useState(new Set());
   const [hasPendingOutgoingRequest, setHasPendingOutgoingRequest] = useState(false);
+  const [activeDate, setActiveDate] = useState(null);
   const [lastRequestedProfile, setLastRequestedProfile] = useState(null);
   const [userInterests, setUserInterests] = useState(new Set());
   const [expandedEvent, setExpandedEvent] = useState(null);
   const [confirmationCode, setConfirmationCode] = useState('');
+  const [currentView, setCurrentView] = useState(initialView);
+  const [pendingRequests, setPendingRequests] = useState([]);
   const [verificationState, setVerificationState] = useState({
     requestId: null,
     code: null,
@@ -314,8 +403,12 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
       friendsMade: 5
     }
   ]);
-  const [profiles, setProfiles] = useState(SAMPLE_PROFILES);
   const [loading, setLoading] = useState(false);
+  const [sharedEvents, setSharedEvents] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState(null);
+  const [showDateModal, setShowDateModal] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [selectedProfile, setSelectedProfile] = useState(null);
 
   // Debug logging for verification state and requests
   useEffect(() => {
@@ -337,76 +430,333 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
     return Math.floor(1000 + Math.random() * 9000).toString();
   };
 
-  const handleSkip = () => {
-    if (hasPendingOutgoingRequest) return;
+  const handleSkip = useCallback(() => {
+    console.log('Skipping profile', currentProfileIndex, 'of', profiles.length);
+    
+    // Add the current profile to skipped profiles if needed
+    const currentProfile = profiles[currentProfileIndex];
+    if (currentProfile) {
+      console.log('Skipping profile:', currentProfile.name);
+    }
+    
     setCurrentProfileIndex((prevIndex) => {
-      const nextIndex = (prevIndex + 1) % availableProfiles.length;
+      const nextIndex = (prevIndex + 1) % profiles.length;
+      console.log('Moving to profile', nextIndex);
+      if (nextIndex === 0) {
+        toast.info("You've seen all profiles! Starting over from the beginning.");
+      }
       return nextIndex;
     });
+  }, [currentProfileIndex, profiles.length, profiles]);
+
+  const findSharedEvents = async (matchId) => {
+    try {
+      // Get current user's event interests
+      const userEventsRef = collection(db, 'users', currentUser.uid, 'eventInterests');
+      const userEventsSnap = await getDocs(userEventsRef);
+      const userEvents = userEventsSnap.docs.map(doc => doc.data().eventId);
+
+      // Get match's event interests
+      const matchEventsRef = collection(db, 'users', matchId, 'eventInterests');
+      const matchEventsSnap = await getDocs(matchEventsRef);
+      const matchEvents = matchEventsSnap.docs.map(doc => doc.data().eventId);
+
+      // Find overlapping events
+      const overlappingEvents = userEvents.filter(eventId => 
+        matchEvents.includes(eventId)
+      );
+
+      // Get full event details
+      const sharedEventDetails = await Promise.all(
+        overlappingEvents.map(async (eventId) => {
+          const eventDoc = await getDoc(doc(db, 'events', eventId));
+          return { id: eventId, ...eventDoc.data() };
+        })
+      );
+
+      // Update state with shared events
+      setSharedEvents(sharedEventDetails);
+      
+      // Return the shared events array
+      return sharedEventDetails;
+    } catch (error) {
+      console.error('Error finding shared events:', error);
+      toast.error('Failed to load shared events');
+      return []; // Return empty array on error
+    }
   };
 
   const handleProposeDate = async (profile) => {
-    // Check if user already has an active or accepted date
-    const hasActiveDate = dateRequests.some(
-      request => (request.status === 'active' || request.status === 'accepted') && !request.completedAt
-    );
+    // Show the date suggestion modal first
+    setSelectedProfile(profile);
+    setShowDateModal(true);
+  };
 
-    if (hasActiveDate) {
-      toast.error('Please complete your current date before starting a new one');
-      return;
+  const handleDateDetailsSubmit = async (dateDetails) => {
+    try {
+      setLoading(true);
+
+      if (selectedRequest) {
+        // Handle accepting a received request
+        const requestRef = doc(db, 'dateRequests', selectedRequest.id);
+        await updateDoc(requestRef, {
+          status: 'accepted',
+          dateDetails,
+          lastUpdated: new Date(),
+          participants: [selectedRequest.senderId, selectedRequest.recipientId] // Ensure participants are set
+        });
+
+        // Close modal and update state
+        setShowDateModal(false);
+        setSelectedRequest(null);
+
+        // Show success message
+        toast.success('Date details sent! Waiting for confirmation.');
+      } else if (selectedProfile) {
+        // Handle sending a new request
+        const currentUserId = isSplitView ? autoLoginUserId : currentUser.uid;
+        const newRequest = {
+          id: Date.now().toString(),
+          senderId: currentUserId,
+          recipientId: selectedProfile.id,
+          status: 'pending',
+          createdAt: new Date(),
+          lastUpdated: new Date(),
+          participants: [currentUserId, selectedProfile.id], // Ensure both users are in participants
+          dateDetails
+        };
+
+        if (isSplitView) {
+          // In split view, update the shared dateRequests state
+          setDateRequests(prev => {
+            const updatedRequests = prev.map(r => 
+              r.id === newRequest.id ? newRequest : r
+            );
+            return updatedRequests;
+          });
+
+          // Update pending requests state
+          setPendingRequests(prev => {
+            const filteredRequests = prev.filter(r => 
+              !(r.participants.includes(newRequest.senderId) && r.participants.includes(newRequest.recipientId))
+            );
+            return [...filteredRequests, newRequest];
+          });
+
+          // Update profiles with pending requests
+          setProfilesWithPendingRequests(prev => new Set([...prev, selectedProfile.id]));
+          
+          // Hide the profile from discovery
+          setProfiles(prev => prev.filter(p => p.id !== selectedProfile.id));
+        } else {
+          // In regular mode, add to Firestore
+          await addDoc(collection(db, 'dateRequests'), newRequest);
+        }
+
+        // Update local state
+        setLastRequestedProfile(selectedProfile);
+        setCurrentView('requests');
+        
+        // Close the modal
+        setShowDateModal(false);
+        setSelectedProfile(null);
+
+        // Show success message
+        toast.success(
+          <div className="space-y-2">
+            <div className="font-medium">Date Request Sent!</div>
+            <div className="text-sm">We'll notify you when {selectedProfile.name} responds</div>
+          </div>
+        );
+      }
+    } catch (error) {
+      console.error('Error handling date details:', error);
+      toast.error('Failed to process date details. Please try again.');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // Check for pending outgoing request
-    if (hasPendingOutgoingRequest) {
-      toast.error('You already have a pending date request');
-      return;
-    }
-
-    // Validate profile data
-    if (!profile || !profile.id || !profile.basicInfo || !profile.availability || !profile.activities) {
-      console.error('Invalid profile data:', profile);
-      toast.error('Unable to propose date at this time');
-      return;
-    }
-
-    // Set state for pending request UI
-    setLastRequestedProfile(profile);
-    setHasPendingOutgoingRequest(true);
-    setCurrentView('discovery');
-
-    // Find relevant events based on profile's activities
-    const relevantEvents = events.filter(event => 
-      profile.activities.some(activity => 
-        event.title.toLowerCase().includes(activity.toLowerCase()) || 
-        event.description.toLowerCase().includes(activity.toLowerCase())
-      )
-    );
-
-    // Update events to show relevant ones first
-    setEvents(prevEvents => {
-      const nonRelevantEvents = prevEvents.filter(e => 
-        !relevantEvents.find(re => re.title === e.title)
-      );
-      return [...relevantEvents, ...nonRelevantEvents];
-    });
-
-    // Navigate to date planning
-    const profileData = {
-      id: profile.id,
-      basicInfo: profile.basicInfo,
-      photo: profile.photo,
-      availability: profile.availability,
-      activities: profile.activities,
-      location: profile.basicInfo.location
+  const updateRequestStatus = (request, newStatus) => {
+    // Create the updated request object
+    const updatedRequest = {
+      ...request,
+      status: newStatus,
+      confirmedAt: newStatus === 'confirmed' ? new Date().toISOString() : undefined,
+      lastUpdated: new Date().toISOString()
     };
 
-    navigate('/date-planning/new', {
-      state: {
-        profile: profileData,
-        returnTo: '/matches'
-      },
-      replace: true
+    // Update all state in one go to maintain consistency
+    setDateRequests(prev => {
+      // Remove the old request and add the updated one
+      const otherRequests = prev.filter(r => r.id !== request.id);
+      return [...otherRequests, updatedRequest];
     });
+
+    // Update pending requests
+    setPendingRequests(prev => prev.filter(r => r.id !== request.id));
+
+    // Update profiles with pending requests
+    setProfilesWithPendingRequests(prev => {
+      const newSet = new Set(prev);
+      if (request.participants) {
+        request.participants.forEach(participantId => {
+          newSet.delete(participantId);
+        });
+      }
+      return newSet;
+    });
+
+    return updatedRequest;
+  };
+
+  const handleAcceptRequest = async (requestId) => {
+    try {
+      // First update the view state to ensure UI updates
+      setCurrentView('dates');
+      updateSharedState(prevState => ({
+        ...prevState,
+        currentView: 'dates'
+      }));
+
+      if (isSplitView) {
+        // In split view, update local state only
+        const request = dateRequests.find(r => r.id === requestId);
+        if (!request) {
+          toast.error('Request not found');
+          return;
+        }
+
+        const updatedRequest = {
+          ...request,
+          status: 'confirmed',
+          confirmedAt: new Date(),
+          lastUpdated: new Date(),
+          participants: request.participants || [request.senderId, request.recipientId]
+        };
+
+        // Update the shared state atomically for both profiles
+        updateSharedState(prevState => {
+          const updatedDateRequests = prevState.dateRequests.map(r => 
+            r.id === requestId ? updatedRequest : r
+          );
+          
+          return {
+            ...prevState,
+            dateRequests: updatedDateRequests,
+            pendingRequests: prevState.pendingRequests.filter(r => r.id !== requestId),
+            currentView: 'dates'
+          };
+        });
+
+        // Update local state for the current profile
+        setDateRequests(prev => prev.map(r => 
+          r.id === requestId ? updatedRequest : r
+        ));
+        setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+
+        // Force a refresh of both views
+        setTimeout(() => {
+          const event = new Event('visibilitychange');
+          document.dispatchEvent(event);
+        }, 100);
+
+        toast.success('Date request accepted! Check the Dates tab to view details.');
+      } else {
+        // In regular mode, update Firestore
+        const requestRef = doc(db, 'dateRequests', requestId);
+        const request = dateRequests.find(r => r.id === requestId);
+        
+        if (!request) {
+          toast.error('Request not found');
+          return;
+        }
+
+        // Update the request status in Firestore
+        await updateDoc(requestRef, {
+          status: 'confirmed',
+          confirmedAt: serverTimestamp(),
+          lastUpdated: serverTimestamp(),
+          participants: request.participants || [request.senderId, request.recipientId]
+        });
+
+        // Update notifications
+        await addNotification({
+          userId: request.senderId,
+          type: 'date_request_accepted',
+          message: `${request.recipientName || 'Someone'} accepted your date request!`,
+          dateRequestId: requestId
+        });
+
+        // Update the shared state atomically
+        updateSharedState(prevState => ({
+          ...prevState,
+          dateRequests: prevState.dateRequests.map(r => 
+            r.id === requestId 
+              ? { ...r, status: 'confirmed', confirmedAt: new Date(), participants: request.participants || [request.senderId, request.recipientId] }
+              : r
+          ),
+          pendingRequests: prevState.pendingRequests.filter(r => r.id !== requestId),
+          currentView: 'dates'
+        }));
+
+        // Update local state
+        setDateRequests(prev => prev.map(r => 
+          r.id === requestId 
+            ? { ...r, status: 'confirmed', confirmedAt: new Date(), participants: request.participants || [request.senderId, request.recipientId] }
+            : r
+        ));
+        setPendingRequests(prev => prev.filter(r => r.id !== requestId));
+
+        // Force a refresh of both views
+        setTimeout(() => {
+          const event = new Event('visibilitychange');
+          document.dispatchEvent(event);
+        }, 100);
+
+        toast.success('Date request accepted! Check the Dates tab to view details.');
+      }
+    } catch (error) {
+      console.error('Error accepting date request:', error);
+      toast.error('Failed to accept date request. Please try again.');
+    }
+  };
+
+  const handleRejectRequest = async (requestId) => {
+    try {
+      const requestRef = doc(db, 'dateRequests', requestId);
+      
+      // Update the request status in Firestore
+      await updateDoc(requestRef, {
+        status: 'declined',
+        declinedAt: serverTimestamp(),
+        lastUpdated: serverTimestamp()
+      });
+
+      // Update notifications
+      await addNotification({
+        userId: dateRequests.find(r => r.id === requestId).senderId,
+        type: 'date_request_declined',
+        message: `${dateRequests.find(r => r.id === requestId).recipientName} declined your date request`,
+        dateRequestId: requestId
+      });
+
+      // Update the shared state atomically
+      updateSharedState(prevState => ({
+        dateRequests: prevState.dateRequests.map(r => 
+          r.id === requestId 
+            ? { ...r, status: 'declined', declinedAt: new Date() }
+            : r
+        ),
+        pendingRequests: prevState.pendingRequests.filter(r => r.id !== requestId)
+      }));
+
+      toast.success('Date request declined');
+      
+    } catch (error) {
+      console.error('Error declining date request:', error);
+      toast.error('Failed to decline date request');
+    }
   };
 
   const handleViewRequest = (request) => {
@@ -453,88 +803,77 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
         return;
       }
 
-      // Add to user's interested events
+      // Add to user's interested events in Firestore
       const userRef = doc(db, 'users', currentUser.uid);
       await updateDoc(userRef, {
         interestedEvents: arrayUnion(eventId)
       });
 
-      toast.success(`Added ${event.title} to your interested events!`);
+      // Update UI state to show interest
+      setUserInterests(prev => new Set([...prev, event.title]));
+      
+      // Check if any matches are also interested in this event
+      const matchInterests = await checkMatchInterests(eventId);
+      
+      if (matchInterests.length > 0) {
+        // Show notification about shared interest
+        toast.success(
+          <div className="space-y-2">
+            <div className="font-medium">Shared Interest!</div>
+            <div className="text-sm">
+              {matchInterests.length} {matchInterests.length === 1 ? 'match is' : 'matches are'} also interested in {event.title}
+            </div>
+            <button 
+              onClick={() => navigate('/matches', { state: { view: 'discovery', sharedEvent: event } })}
+              className="text-sm text-rose-500 underline"
+            >
+              View matches
+            </button>
+          </div>,
+          { duration: 5000 }
+        );
+      } else {
+        // Regular success message
+        toast.success(`Added ${event.title} to your interested events!`);
+      }
     } catch (error) {
       console.error('Error marking event interest:', error);
       toast.error('Failed to save event interest');
     }
   };
-
-  const handleAcceptRequest = async (request) => {
+  
+  // Helper function to check if any matches are interested in the same event
+  const checkMatchInterests = async (eventId) => {
     try {
-      const requestRef = doc(db, 'dateRequests', request.id);
-      
-      // Update the request status to accepted
-      await updateDoc(requestRef, {
-        status: 'accepted',
-        acceptedAt: new Date(),
-        lastUpdated: new Date(),
-        participants: [request.senderId, request.recipientId] // Ensure both users are in participants
-      });
-
-      const sender = SAMPLE_PROFILES.find(p => p.id === request.senderId);
-      
-      // Find relevant events based on shared interests
-      const senderActivities = sender?.activities || [];
-      const relevantEvents = events.filter(event => 
-        senderActivities.some(activity => 
-          event.title.toLowerCase().includes(activity.toLowerCase()) || 
-          event.description.toLowerCase().includes(activity.toLowerCase())
-        )
+      // Get all matches
+      const matchesQuery = query(
+        collection(db, 'matches'),
+        where('participants', 'array-contains', currentUser.uid),
+        where('status', '==', 'accepted')
       );
-
-      // Update events to show relevant ones first
-      setEvents(prevEvents => {
-        const nonRelevantEvents = prevEvents.filter(e => 
-          !relevantEvents.find(re => re.title === e.title)
-        );
-        return [...relevantEvents, ...nonRelevantEvents];
-      });
-
-      // Show success message
-      toast.success(
-        <div className="space-y-2">
-          <div className="font-medium">Invite Accepted!</div>
-          <div className="text-sm">You're now connected with {sender?.basicInfo.name}</div>
-          {relevantEvents.length > 0 && (
-            <div className="text-sm text-gray-600">
-              Found {relevantEvents.length} events you might both enjoy!
-            </div>
-          )}
-        </div>,
-        { duration: 5000 }
-      );
-
-      // Set current view to discovery to show the waiting/events screen
-      setCurrentView('discovery');
-      setHasPendingOutgoingRequest(true);
-      setLastRequestedProfile(sender);
-
-    } catch (error) {
-      console.error('Error accepting invite:', error);
-      toast.error('Failed to accept invite. Please try again.');
-    }
-  };
-
-  const handleRejectRequest = async (requestId) => {
-    try {
-      const requestRef = doc(db, 'dateRequests', requestId);
-      await updateDoc(requestRef, {
-        status: 'rejected',
-        rejectedAt: new Date(),
-        lastUpdated: new Date()
+      
+      const matchesSnapshot = await getDocs(matchesQuery);
+      const matchIds = matchesSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return data.participants.find(id => id !== currentUser.uid);
       });
       
-      toast.success('Request declined');
+      // Check each match's interested events
+      const interestedMatches = [];
+      for (const matchId of matchIds) {
+        const matchDoc = await getDoc(doc(db, 'users', matchId));
+        if (matchDoc.exists()) {
+          const matchData = matchDoc.data();
+          if (matchData.interestedEvents?.includes(eventId)) {
+            interestedMatches.push(matchData);
+          }
+        }
+      }
+      
+      return interestedMatches;
     } catch (error) {
-      console.error('Error rejecting request:', error);
-      toast.error('Failed to decline request');
+      console.error('Error checking match interests:', error);
+      return [];
     }
   };
 
@@ -628,14 +967,14 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
           <div className="flex items-center space-x-4">
             <img
               src={otherUser.photo}
-              alt={otherUser.basicInfo.name}
+              alt={otherUser.name}
               className="w-16 h-16 rounded-full object-cover"
             />
             <div>
               <h3 className="text-xl font-semibold text-gray-900">
-                {otherUser.basicInfo.name}
+                {otherUser.name}
               </h3>
-              <p className="text-gray-600">{otherUser.basicInfo.location}</p>
+              <p className="text-gray-600">{otherUser.age} years old</p>
             </div>
           </div>
           <div className="bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium">
@@ -643,77 +982,36 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
           </div>
         </div>
 
-        {/* Date Details Card */}
-        <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-          <h4 className="font-medium text-gray-900">Date Details</h4>
-          <div className="space-y-2 text-gray-700">
-            {request.dateDetails?.activity && (
-              <p className="flex items-center">
-                <span className="w-24 text-gray-500">Activity:</span>
-                <span className="font-medium">{request.dateDetails.activity}</span>
-              </p>
-            )}
-            <p className="flex items-center">
-              <span className="w-24 text-gray-500">When:</span>
-              <span className="font-medium">
-                {request.dateDetails?.day} at {request.dateDetails?.time}
-              </span>
+        {/* Date Details */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h4 className="font-medium text-gray-900 mb-4">Date Details</h4>
+          <div className="space-y-2">
+            <p className="text-gray-700">
+              <span className="font-medium">Activity:</span> {request.dateDetails?.activity}
             </p>
-            {request.dateDetails?.venue && (
-              <p className="flex items-center">
-                <span className="w-24 text-gray-500">Where:</span>
-                <span className="font-medium">{request.dateDetails.venue}</span>
-              </p>
-            )}
+            <p className="text-gray-700">
+              <span className="font-medium">When:</span> {request.dateDetails?.day} at {request.dateDetails?.time}
+            </p>
+            <p className="text-gray-700">
+              <span className="font-medium">Where:</span> {request.dateDetails?.venue}
+            </p>
           </div>
         </div>
 
-        {/* Events Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-lg font-semibold text-gray-900">Events You Might Both Enjoy</h4>
-          </div>
-          <div className="grid grid-cols-1 gap-4">
-            {events.slice(0, 3).map((event, index) => (
-              <div 
-                key={`event-${index}`}
-                className="bg-white rounded-lg border border-gray-100 overflow-hidden hover:border-rose-200 transition-colors"
-              >
-                <div className="flex items-center space-x-4 p-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-16 h-16 bg-rose-100 rounded-lg flex items-center justify-center text-2xl">
-                      {event.emoji || '🎉'}
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h5 className="text-base font-medium text-gray-900 truncate">{event.title}</h5>
-                    <p className="text-sm text-gray-500">{event.date} at {event.time}</p>
-                    <p className="text-sm text-gray-500">{event.location}</p>
-                  </div>
-                  <button
-                    onClick={() => handleEventInterest(event.id)}
-                    className="flex-shrink-0 bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-1 rounded-full text-sm transition-colors"
-                  >
-                    I'm Interested
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Complete Date Button */}
-        <div className="border-t pt-6">
+        {/* Action Buttons */}
+        <div className="flex gap-4">
           <button
             onClick={() => handleDateComplete(request.id)}
-            className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 
-                     transition-colors font-medium flex items-center justify-center space-x-2"
+            className="flex-1 bg-green-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-600"
           >
-            <span>Mark Date as Complete</span>
+            Complete Date
           </button>
-          <p className="text-sm text-gray-500 text-center mt-3">
-            Complete this date to see new matches and requests
-          </p>
+          <button
+            onClick={() => handleCancelDate(request.id)}
+            className="flex-1 bg-red-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-red-600"
+          >
+            Cancel Date
+          </button>
         </div>
       </div>
     );
@@ -754,12 +1052,12 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
           <div className="flex items-center space-x-4">
             <img
               src={otherUser?.photo}
-              alt={otherUser?.basicInfo.name}
+              alt={otherUser?.name}
               className="w-16 h-16 rounded-full object-cover"
             />
             <div>
-              <h3 className="text-xl font-semibold text-gray-900">{otherUser?.basicInfo.name}</h3>
-              <p className="text-gray-600">{otherUser?.basicInfo.location}</p>
+              <h3 className="text-xl font-semibold text-gray-900">{otherUser?.name}</h3>
+              <p className="text-gray-600">{otherUser?.age} years old</p>
             </div>
           </div>
           <div className="bg-rose-100 text-rose-800 px-4 py-2 rounded-full text-sm font-medium">
@@ -795,12 +1093,12 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
                 <div className="text-4xl font-mono font-bold tracking-wider bg-rose-50 text-rose-600 p-4 rounded-lg inline-block">
                   {verificationCode}
                 </div>
-                <p className="text-gray-600">Show this code to {otherUser?.basicInfo.name}</p>
+                <p className="text-gray-600">Show this code to {otherUser?.name}</p>
                 <p className="text-sm text-gray-500 mt-2">Code: {verificationCode}</p>
               </div>
             ) : isVerificationStarted ? (
               <div key="verification-input" className="space-y-4">
-                <p className="text-gray-600 mb-2">Enter the code shown by {otherUser?.basicInfo.name}:</p>
+                <p className="text-gray-600 mb-2">Enter the code shown by {otherUser?.name}:</p>
                 <input
                   type="text"
                   maxLength="4"
@@ -869,99 +1167,310 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
     );
   };
 
-  const renderDatesView = () => (
-    <motion.div
-      key="dates"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="space-y-6"
-    >
-      <h2 className="text-xl font-semibold text-gray-900">Your Dates</h2>
-      
-      {/* Confirmed Dates */}
-      {dateRequests
-        .filter(request => request.status === 'confirmed')
-        .map(request => (
-          <div key={`date-${request.id}`}>
-            {renderAcceptedDateDetails({ request })}
-          </div>
-        ))}
+  const renderRequestsView = () => {
+    // Filter requests based on current user
+    const userId = isSplitView ? autoLoginUserId : currentUser?.uid;
+    console.log('Current user ID for requests:', userId);
+    console.log('All requests:', dateRequests);
+    
+    // Get only pending requests for the current user
+    const userRequests = dateRequests.filter(request => 
+      request.status === 'pending' &&  // Only show pending requests
+      (request.senderId === userId || request.recipientId === userId)  // User is either sender or recipient
+    );
+    
+    console.log('Filtered pending requests for user:', userRequests);
 
-      {/* No Dates Message */}
-      {!dateRequests.some(r => r.status === 'confirmed') && (
-        <div className="text-center py-12 bg-white rounded-xl shadow-sm">
-          <p className="text-gray-600">No confirmed dates yet</p>
-          <p className="text-sm text-gray-500 mt-2">
-            When you accept a date request, it will appear here
-          </p>
+    // Separate sent and received requests
+    const sentRequests = userRequests.filter(request => request.senderId === userId);
+    const receivedRequests = userRequests.filter(request => request.recipientId === userId);
+
+    console.log('Sent requests:', sentRequests);
+    console.log('Received requests:', receivedRequests);
+
+    if (userRequests.length === 0) {
+      return (
+        <div className="text-center text-gray-500 mt-8">
+          <p>No pending requests yet.</p>
+          <p className="text-sm mt-2">When you send or receive date requests, they'll appear here!</p>
         </div>
-      )}
-    </motion.div>
-  );
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        {/* Show Received Requests first */}
+        {receivedRequests.length > 0 && (
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Received Requests</h3>
+            {receivedRequests.map(request => (
+              <RequestCard
+                key={request.id}
+                request={request}
+                type="Received"
+                onAccept={() => handleAcceptRequest(request.id)}
+                onDecline={() => handleRejectRequest(request.id)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Then show Sent Requests */}
+        {sentRequests.length > 0 && (
+          <div>
+            <h3 className="text-lg font-semibold mb-4">Sent Requests</h3>
+            {sentRequests.map(request => (
+              <RequestCard
+                key={request.id}
+                request={request}
+                type="Sent"
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderDatesView = () => {
+    // Get current user ID based on context
+    const currentUserId = isSplitView ? autoLoginUserId : currentUser?.uid;
+    
+    // Filter confirmed dates for the current user
+    const confirmedDates = dateRequests.filter(request => 
+      request.status === 'confirmed' && 
+      request.participants.includes(currentUserId)
+    );
+
+    console.log('Rendering dates view:', {
+      currentUserId,
+      allRequests: dateRequests,
+      confirmedDates
+    });
+
+    return (
+      <motion.div
+        key="dates"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="space-y-6"
+      >
+        <h2 className="text-xl font-semibold text-gray-900">Your Dates</h2>
+        
+        {/* Confirmed Dates */}
+        {confirmedDates.map(request => {
+          // Get the other user's ID and profile
+          const otherUserId = request.senderId === currentUserId ? request.recipientId : request.senderId;
+          const otherProfile = SAMPLE_PROFILES.find(p => p.id === otherUserId);
+
+          return (
+            <div key={`date-${request.id}`} className="bg-white rounded-lg shadow-sm p-6">
+              <div className="flex items-start space-x-4">
+                {/* Profile Photo */}
+                <img
+                  src={otherProfile?.photo}
+                  alt={otherProfile?.name}
+                  className="w-16 h-16 rounded-full object-cover"
+                />
+                
+                {/* Date Details */}
+                <div className="flex-1">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="font-medium text-gray-900">{otherProfile?.name}</h3>
+                      <p className="text-sm text-gray-500">
+                        Confirmed on {new Date(request.confirmedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <span className="px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
+                      Confirmed
+                    </span>
+                  </div>
+
+                  {/* Date Details Card */}
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                    <h4 className="font-medium text-gray-900">Date Details</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-600">Activity</p>
+                        <p className="font-medium">{request.dateDetails.activity}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">When</p>
+                        <p className="font-medium">
+                          {request.dateDetails.day} at {request.dateDetails.time}
+                        </p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-gray-600">Where</p>
+                        <p className="font-medium">{request.dateDetails.venue}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="mt-4 flex space-x-3">
+                    <button
+                      onClick={() => handleStartVerification(request.id)}
+                      className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600"
+                    >
+                      Start Date
+                    </button>
+                    <button
+                      onClick={() => handleCancelDate(request.id)}
+                      className="flex-1 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200"
+                    >
+                      Cancel Date
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* No Dates Message */}
+        {confirmedDates.length === 0 && (
+          <div className="text-center py-12 bg-white rounded-lg shadow-sm">
+            <p className="text-gray-600">No confirmed dates yet</p>
+            <p className="text-sm text-gray-500 mt-2">
+              When you confirm a date request, it will appear here
+            </p>
+          </div>
+        )}
+      </motion.div>
+    );
+  };
 
   // Add Firebase listener for date requests
   useEffect(() => {
-    if (!currentUser) return;
+    // Early return if neither currentUser nor isSplitView is available
+    if (!currentUser && !isSplitView) return;
 
-    const q = query(
-      collection(db, 'dateRequests'),
-      where('participants', 'array-contains', currentUser.uid)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const requests = [];
-      snapshot.forEach((doc) => {
-        const request = { id: doc.id, ...doc.data() };
-        
-        // Update verification state if this request has verification started
-        if (request.status === 'pre_verification' && request.preVerificationCode) {
-          console.log('Found request with verification:', request);
-          
-          // Only update verification state if it's different from current
-          if (verificationState.requestId !== request.id || 
-              verificationState.code !== request.preVerificationCode) {
-            console.log('Updating verification state from Firebase');
-            updateVerificationState({
-              requestId: request.id,
-              code: request.preVerificationCode,
-              startedBy: request.verificationStartedBy
-            });
+    if (isSplitView) {
+      // Initialize sample request if needed
+      if (dateRequests.length === 0) {
+        const sampleRequest = {
+          id: 'sample-request-1',
+          senderId: 'profile1',
+          recipientId: 'profile2',
+          status: 'pending',
+          createdAt: new Date(),
+          lastUpdated: new Date(),
+          participants: ['profile1', 'profile2'],
+          dateDetails: {
+            activity: 'Hiking',
+            day: 'Monday',
+            time: 'Evening',
+            venue: 'Local Trail'
           }
-        }
+        };
+        setDateRequests([sampleRequest]);
         
-        requests.push(request);
-      });
-
-      console.log('All requests:', requests);
-      setDateRequests(requests);
-      
-      // Update pending request state
-      const hasPending = requests.some(r => 
-        (r.status === 'pending' || r.status === 'pre_verification') && 
-        r.senderId === currentUser.uid
-      );
-      setHasPendingOutgoingRequest(hasPending);
-
-      // Update last requested profile if there's a pending request
-      const pendingRequest = requests.find(r => 
-        (r.status === 'pending' || r.status === 'pre_verification') && 
-        r.senderId === currentUser.uid
-      );
-      if (pendingRequest) {
-        const profile = SAMPLE_PROFILES.find(p => p.id === pendingRequest.recipientId);
-        setLastRequestedProfile(profile);
+        // Also update the shared state
+        updateSharedState(prevState => ({
+          ...prevState,
+          dateRequests: [sampleRequest]
+        }));
       }
 
-      setIsLoading(false);
-    });
+      // Update pending requests based on current user
+      const userRequests = dateRequests.filter(request => 
+        request.participants.includes(autoLoginUserId) &&
+        request.status === 'pending'
+      );
+      
+      // Update shared state instead of local state
+      updateSharedState(prevState => ({
+        ...prevState,
+        pendingRequests: userRequests,
+        dateRequests: dateRequests // Ensure all date requests are in shared state
+      }));
 
-    return () => unsubscribe();
-  }, [currentUser]);
+      // Update profiles with pending requests
+      const pendingIds = new Set(userRequests.flatMap(request => request.participants));
+      setProfilesWithPendingRequests(pendingIds);
+
+      setIsLoading(false);
+    } else {
+      // Only proceed with Firestore listener if we have a currentUser
+      if (!currentUser?.uid) return;
+
+      // Set up Firestore listener for real users
+      const q = query(
+        collection(db, 'dateRequests'),
+        where('participants', 'array-contains', currentUser.uid)
+      );
+
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const requests = [];
+        const pendingProfileIds = new Set();
+        
+        snapshot.forEach((doc) => {
+          const request = { id: doc.id, ...doc.data() };
+          
+          if (request.status === 'pending' || request.status === 'active') {
+            const otherUserId = request.senderId === currentUser.uid ? request.recipientId : request.senderId;
+            pendingProfileIds.add(otherUserId);
+          }
+          
+          requests.push(request);
+        });
+
+        setDateRequests(requests);
+        setProfilesWithPendingRequests(pendingProfileIds);
+        
+        const pendingReqs = requests.filter(r => r.status === 'pending');
+        
+        // Update shared state instead of local state
+        updateSharedState(prevState => ({
+          ...prevState,
+          pendingRequests: pendingReqs
+        }));
+        
+        setHasPendingOutgoingRequest(pendingReqs.some(r => r.senderId === currentUser.uid));
+        
+        // Filter available profiles
+        const availableProfiles = SAMPLE_PROFILES.filter(profile => 
+          !pendingProfileIds.has(profile.id) &&
+          !requests.some(r => r.status === 'active' && [r.senderId, r.recipientId].includes(profile.id))
+        );
+        
+        setProfiles(availableProfiles);
+        setIsLoading(false);
+        
+        if (currentProfileIndex >= availableProfiles.length) {
+          setCurrentProfileIndex(0);
+        }
+      });
+
+      return () => unsubscribe();
+    }
+  }, [currentUser, isSplitView, autoLoginUserId, dateRequests, currentProfileIndex]);
 
   const handleStartVerification = async (requestId) => {
     try {
-      console.log('Starting verification for request:', requestId);
+      let request;
+      
+      if (isSplitView) {
+        // In split view, get request from local state
+        request = dateRequests.find(r => r.id === requestId);
+        if (!request) {
+          toast.error('Date request not found');
+          return;
+        }
+      } else {
+        // In regular mode, get request from Firestore
+        const requestRef = doc(db, 'dateRequests', requestId);
+        const requestDoc = await getDoc(requestRef);
+        if (!requestDoc.exists()) {
+          toast.error('Date request not found');
+          return;
+        }
+        request = requestDoc.data();
+      }
+      
       const code = Math.floor(1000 + Math.random() * 9000).toString();
       console.log('Generated code:', code);
       
@@ -969,45 +1478,61 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
       const newState = {
         requestId,
         code,
-        startedBy: currentUser.uid
+        startedBy: isSplitView ? autoLoginUserId : currentUser.uid
       };
       updateVerificationState(newState);
       console.log('Updated local verification state with code:', code);
 
-      // Update Firestore
-      const requestRef = doc(db, 'dateRequests', requestId);
-      await updateDoc(requestRef, {
-        status: 'pre_verification',
-        preVerificationCode: code,
-        verificationStartedBy: currentUser.uid,
-        lastUpdated: serverTimestamp()
-      });
+      if (isSplitView) {
+        // In split view, just update local state
+        setDateRequests(prev => prev.map(req => {
+          if (req.id === requestId) {
+            return {
+              ...req,
+              status: 'pre_verification',
+              preVerificationCode: code,
+              verificationStartedBy: autoLoginUserId,
+              lastUpdated: new Date()
+            };
+          }
+          return req;
+        }));
+      } else {
+        // In regular mode, update Firestore
+        const requestRef = doc(db, 'dateRequests', requestId);
+        await updateDoc(requestRef, {
+          status: 'pre_verification',
+          preVerificationCode: code,
+          verificationStartedBy: currentUser.uid,
+          lastUpdated: serverTimestamp()
+        });
+      }
       
-      console.log('Firestore updated successfully with code:', code);
+      console.log('Request updated successfully with code:', code);
       toast.success('Verification code generated!');
     } catch (error) {
       console.error('Error starting verification:', error);
-      // Reset verification state on error
-      updateVerificationState({
-        requestId: null,
-        code: null,
-        startedBy: null
-      });
-      toast.error('Failed to generate verification code. Please try again.');
+      toast.error('Failed to start verification');
     }
   };
 
   const handleVerifyCode = async (requestId) => {
     try {
-      const requestRef = doc(db, 'dateRequests', requestId);
-      const requestDoc = await getDoc(requestRef);
+      let request;
       
-      if (!requestDoc.exists()) {
-        toast.error('Date request not found');
+      if (isSplitView) {
+        // In split view, get request from local state
+        request = dateRequests.find(r => r.id === requestId);
+      } else {
+        // In regular mode, get request from Firestore
+        const requestRef = doc(db, 'dateRequests', requestId);
+        const requestDoc = await getDoc(requestRef);
+        if (!requestDoc.exists()) {
+          toast.error('Date request not found');
           return;
+        }
+        request = requestDoc.data();
       }
-
-      const request = requestDoc.data();
       
       if (request.preVerificationCode !== confirmationCode) {
         toast.error('Incorrect verification code');
@@ -1015,108 +1540,40 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
         return;
       }
 
-      // Update the request status to 'active' instead of 'confirmed'
-      await updateDoc(requestRef, {
-        status: 'active',
-        verifiedAt: serverTimestamp(),
-        lastUpdated: serverTimestamp()
-      });
-
-      // Update local state
-      setDateRequests(prev => prev.map(req => {
-        if (req.id === requestId) {
-          return {
-            ...req,
-            status: 'active',
-            verifiedAt: new Date(),
-            lastUpdated: new Date()
-          };
-        }
-        return req;
-      }));
+      if (isSplitView) {
+        // Update local state
+        setDateRequests(prev => prev.map(req => {
+          if (req.id === requestId) {
+            return {
+              ...req,
+              status: 'active',
+              verifiedAt: new Date(),
+              lastUpdated: new Date()
+            };
+          }
+          return req;
+        }));
+      } else {
+        // Update Firestore
+        const requestRef = doc(db, 'dateRequests', requestId);
+        await updateDoc(requestRef, {
+          status: 'active',
+          verifiedAt: serverTimestamp(),
+          lastUpdated: serverTimestamp()
+        });
+      }
 
       toast.success('Date verified! Have a great time!');
       setConfirmationCode('');
       
-      // Don't navigate away, let the UI update to show the active date screen
     } catch (error) {
       console.error('Error verifying code:', error);
       toast.error('Failed to verify code');
     }
   };
 
-  const renderRequestsView = () => (
-    <motion.div
-      key="requests"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="space-y-6"
-    >
-      <h2 className="text-xl font-semibold text-gray-900">Date Requests</h2>
-      
-      {/* Pending Requests */}
-      {pendingRequests
-        .filter(request => request.recipientId === currentUser.uid)
-        .map(request => {
-          const sender = SAMPLE_PROFILES.find(p => p.id === request.senderId);
-          if (!sender) return null;
-          
-          return (
-            <div key={request.id} className="bg-white rounded-xl shadow-sm p-6">
-              <div className="flex items-center gap-4">
-                <img
-                  src={sender.photo}
-                  alt={sender.basicInfo.name}
-                  className="w-16 h-16 rounded-full object-cover"
-                />
-                <div>
-                  <h3 className="text-lg font-semibold">{sender.basicInfo.name}</h3>
-                  <p className="text-gray-600">{sender.basicInfo.location}</p>
-                </div>
-              </div>
-              
-              <div className="mt-4 border-t border-gray-100 pt-4">
-                <h4 className="font-medium mb-2">Date Details</h4>
-                <div className="space-y-1 text-gray-600">
-                  <p>Activity: {request.dateDetails?.activity}</p>
-                  <p>When: {request.dateDetails?.day} at {request.dateDetails?.time}</p>
-                  <p>Where: {request.dateDetails?.venue}</p>
-                </div>
-              </div>
-              
-              <div className="mt-6 flex gap-3">
-                <button
-                  onClick={() => handleAcceptRequest(request)}
-                  className="flex-1 bg-rose-500 text-white py-2 rounded-lg hover:bg-rose-600 transition-colors"
-                >
-                  Accept
-                </button>
-                <button
-                  onClick={() => handleRejectRequest(request.id)}
-                  className="flex-1 border border-gray-200 text-gray-700 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Decline
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      
-      {/* No Requests Message */}
-      {!pendingRequests.some(r => r.recipientId === currentUser.uid) && (
-        <div className="text-center py-12 bg-white rounded-xl shadow-sm">
-          <p className="text-gray-600">No pending requests</p>
-          <p className="text-sm text-gray-500 mt-2">
-            When someone sends you a date request, it will appear here
-          </p>
-        </div>
-      )}
-    </motion.div>
-  );
-
   const renderDiscoveryView = () => {
-    if (loading) {
+    if (isLoading) {
       return (
         <div className="flex-1 flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-rose-500"></div>
@@ -1128,23 +1585,26 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
       return (
         <div className="flex-1 flex flex-col items-center justify-center p-4">
           <h2 className="text-2xl font-semibold text-gray-900 mb-2">No more profiles available</h2>
-          <p className="text-gray-600 text-center mb-4">Check back later for new potential matches</p>
+          <p className="text-gray-600 text-center mb-6">Check back later for new potential matches</p>
+          <button
+            onClick={handleRefreshProfiles}
+            className="px-6 py-3 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-colors"
+          >
+            Refresh Profiles
+          </button>
         </div>
       );
     }
 
+    const currentProfile = profiles[currentProfileIndex];
+    console.log('Rendering profile:', currentProfileIndex, 'of', profiles.length, currentProfile?.name);
+    
     return (
-      <div className="flex-1 relative">
+      <div className="flex-1 relative h-[calc(100vh-200px)]">
         <DiscoveryProfile
-          profile={profiles[currentProfileIndex]}
-          onSkip={() => {
-            if (currentProfileIndex < profiles.length - 1) {
-              setCurrentProfileIndex(currentProfileIndex + 1);
-            } else {
-              setProfiles([]);
-            }
-          }}
-          onProposeDate={(profile) => handleProposeDate(profile)}
+          profile={currentProfile}
+          onSkip={handleSkip}
+          onProposeDate={handleProposeDate}
           isLastProfile={currentProfileIndex === profiles.length - 1}
         />
       </div>
@@ -1168,6 +1628,202 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
     }
   };
 
+  const handleCancelDate = async (dateId) => {
+    try {
+      const dateRef = doc(db, 'dateRequests', dateId);
+      await updateDoc(dateRef, {
+        status: 'cancelled',
+        cancelledAt: serverTimestamp(),
+        lastUpdated: serverTimestamp(),
+        cancelledBy: currentUser.uid
+      });
+
+      // Show success message
+      toast.success('Date cancelled successfully');
+      
+      // Reset view to discovery
+      setCurrentView('discovery');
+      
+      // Reset any pending request states
+      setHasPendingOutgoingRequest(false);
+      setLastRequestedProfile(null);
+      
+    } catch (error) {
+      console.error('Error cancelling date:', error);
+      toast.error('Failed to cancel date. Please try again.');
+    }
+  };
+
+  const handleRefreshProfiles = () => {
+    // Filter out profiles that have pending requests or active dates
+    const availableProfiles = SAMPLE_PROFILES.filter(profile => 
+      !profilesWithPendingRequests.has(profile.id) &&
+      !dateRequests.some(r => 
+        r.status === 'active' && 
+        [r.senderId, r.recipientId].includes(profile.id)
+      )
+    );
+    
+    setProfiles(availableProfiles);
+    setCurrentProfileIndex(0);
+    toast.success('Profiles refreshed!');
+  };
+
+  const renderEventSuggestions = (profile) => {
+    if (sharedEvents.length === 0) return null;
+
+    return (
+      <div className="mt-4 space-y-2">
+        <h4 className="text-sm font-medium text-gray-900">Suggested Events</h4>
+        <div className="grid grid-cols-2 gap-2">
+          {sharedEvents.map(event => (
+            <button
+              key={event.id}
+              onClick={() => setSelectedEvent(event)}
+              className={`p-2 rounded-lg text-left text-sm ${
+                selectedEvent?.id === event.id
+                  ? 'bg-rose-500 text-white'
+                  : 'bg-gray-50 text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <div className="font-medium">{event.title}</div>
+              <div className="text-xs">
+                {event.date} • {event.time}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderMatchCard = (match) => (
+    <div className="bg-white rounded-lg shadow-sm p-4">
+      {/* Existing match card content */}
+      {/* ... existing code ... */}
+
+      {/* Add event suggestions */}
+      {renderEventSuggestions(match)}
+      
+      {/* Update action buttons */}
+      <div className="mt-4 flex space-x-2">
+        <button
+          onClick={() => handleProposeDate(match)}
+          className="flex-1 px-4 py-2 bg-rose-500 text-white rounded-lg hover:bg-rose-600"
+        >
+          {selectedEvent ? 'Plan Date at Event' : 'Plan Date'}
+        </button>
+        <button
+          onClick={() => handleSkip(match.id)}
+          className="px-4 py-2 text-gray-600 hover:text-gray-800"
+        >
+          Skip
+        </button>
+      </div>
+    </div>
+  );
+
+  useEffect(() => {
+    if (isSplitView && autoLoginUserId && TEST_USERS[autoLoginUserId]) {
+      const { email, password } = TEST_USERS[autoLoginUserId];
+      
+      // First check if we're already signed in as this user
+      if (auth.currentUser?.email === email) {
+        return; // Already signed in as the correct user
+      }
+
+      // Sign out first to ensure clean state
+      auth.signOut().then(() => {
+        // Then sign in with the test user
+        signInWithEmailAndPassword(auth, email, password)
+          .then((userCredential) => {
+            console.log('Auto-login successful for:', email);
+          })
+          .catch(error => {
+            console.error('Auto-login failed:', error);
+            toast.error('Failed to auto-login. Please try again.');
+          });
+      }).catch(error => {
+        console.error('Sign out failed:', error);
+        toast.error('Failed to switch users. Please try again.');
+      });
+    }
+  }, [isSplitView, autoLoginUserId]);
+
+  const handleCancelRequest = async (request) => {
+    try {
+      const requestRef = doc(db, 'dateRequests', request.id);
+      
+      // Update the request status in Firestore
+      await updateDoc(requestRef, {
+        status: 'cancelled',
+        cancelledAt: serverTimestamp(),
+        lastUpdated: serverTimestamp()
+      });
+
+      // Update notifications
+      await addNotification({
+        userId: request.toUserId,
+        type: 'date_request_cancelled',
+        message: `${request.fromUserName} cancelled their date request`,
+        dateRequestId: request.id
+      });
+
+      // Update the shared state atomically
+      updateSharedState(prevState => ({
+        dateRequests: prevState.dateRequests.map(r => 
+          r.id === request.id 
+            ? { ...r, status: 'cancelled', cancelledAt: new Date() }
+            : r
+        ),
+        pendingRequests: prevState.pendingRequests.filter(r => r.id !== request.id)
+      }));
+
+      toast.success('Date request cancelled');
+      
+    } catch (error) {
+      console.error('Error cancelling date request:', error);
+      toast.error('Failed to cancel date request');
+    }
+  };
+
+  const handleWithdrawRequest = async (request) => {
+    try {
+      const requestRef = doc(db, 'dateRequests', request.id);
+      
+      // Update the request status in Firestore
+      await updateDoc(requestRef, {
+        status: 'withdrawn',
+        withdrawnAt: serverTimestamp(),
+        lastUpdated: serverTimestamp()
+      });
+
+      // Update notifications
+      await addNotification({
+        userId: request.toUserId,
+        type: 'date_request_withdrawn',
+        message: `${request.fromUserName} withdrew their date request`,
+        dateRequestId: request.id
+      });
+
+      // Update the shared state atomically
+      updateSharedState(prevState => ({
+        dateRequests: prevState.dateRequests.map(r => 
+          r.id === request.id 
+            ? { ...r, status: 'withdrawn', withdrawnAt: new Date() }
+            : r
+        ),
+        pendingRequests: prevState.pendingRequests.filter(r => r.id !== request.id)
+      }));
+
+      toast.success('Date request withdrawn');
+      
+    } catch (error) {
+      console.error('Error withdrawing date request:', error);
+      toast.error('Failed to withdraw date request');
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -1177,60 +1833,62 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Navigation */}
+    <div className={`${isSplitView ? '' : 'min-h-screen'} bg-gray-50`}>
+      {/* Add DashboardHeader */}
+      {!isSplitView && <DashboardHeader userId={autoLoginUserId} />}
+
+      <div className={`${isSplitView ? '' : 'max-w-4xl mx-auto px-4'} py-8`}>
         <div className="mb-8">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-900">
-              {activeDate ? 'Active Date' : 'Find Matches'}
-            </h1>
-            
-            {/* Only show navigation tabs if there's no active or accepted date */}
-            {!dateRequests.some(r => (r.status === 'active' || r.status === 'accepted') && !r.completedAt) && (
-              <div className="flex space-x-4">
-                <button
-                  onClick={() => setCurrentView('discovery')}
-                  className={`px-4 py-2 rounded-lg ${
-                    currentView === 'discovery'
-                      ? 'bg-rose-500 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  Discovery
-                </button>
-                <button
-                  onClick={() => setCurrentView('requests')}
-                  className={`px-4 py-2 rounded-lg relative ${
-                    currentView === 'requests'
-                      ? 'bg-rose-500 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  Requests
-                  {pendingRequests.length > 0 && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full" />
-                  )}
-                </button>
-                <button
-                  onClick={() => setCurrentView('dates')}
-                  className={`px-4 py-2 rounded-lg ${
-                    currentView === 'dates'
-                      ? 'bg-rose-500 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  Dates
-                </button>
-              </div>
-            )}
-            </div>
-          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Find Matches</h2>
           
+          {/* Navigation Tabs */}
+          <div className="flex space-x-4 border-b">
+            <button
+              onClick={() => {
+                updateSharedState({ currentView: 'discovery' });
+                setCurrentView('discovery');
+              }}
+              className={`px-4 py-2 ${
+                (sharedState.currentView === 'discovery' || currentView === 'discovery')
+                  ? 'border-b-2 border-rose-500 text-rose-500 font-medium'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Discovery
+            </button>
+            <button
+              onClick={() => {
+                updateSharedState({ currentView: 'requests' });
+                setCurrentView('requests');
+              }}
+              className={`px-4 py-2 ${
+                (sharedState.currentView === 'requests' || currentView === 'requests')
+                  ? 'border-b-2 border-rose-500 text-rose-500 font-medium'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Requests
+            </button>
+            <button
+              onClick={() => {
+                updateSharedState({ currentView: 'dates' });
+                setCurrentView('dates');
+              }}
+              className={`px-4 py-2 ${
+                (sharedState.currentView === 'dates' || currentView === 'dates')
+                  ? 'border-b-2 border-rose-500 text-rose-500 font-medium'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              Dates
+            </button>
+          </div>
+        </div>
+
         {/* Main Content */}
         <AnimatePresence mode="wait">
           {/* If there's an active or accepted date, show only that */}
-          {dateRequests.some(r => (r.status === 'active' || r.status === 'accepted') && !r.completedAt) ? (
+          {sharedState.dateRequests.some(r => (r.status === 'active' || r.status === 'accepted') && !r.completedAt) ? (
             <motion.div
               key="active-or-accepted-date"
               initial={{ opacity: 0, y: 20 }}
@@ -1238,21 +1896,36 @@ export default function Matches({ currentView: initialView = 'discovery' }) {
               exit={{ opacity: 0, y: -20 }}
               className="bg-white rounded-xl shadow-sm p-6"
             >
-              {dateRequests.find(r => r.status === 'active' && !r.completedAt) ? (
-                renderActiveDateDetails({ request: dateRequests.find(r => r.status === 'active' && !r.completedAt) })
+              {sharedState.dateRequests.find(r => r.status === 'active' && !r.completedAt) ? (
+                renderActiveDateDetails({ request: sharedState.dateRequests.find(r => r.status === 'active' && !r.completedAt) })
               ) : (
-                renderAcceptedDateDetails({ request: dateRequests.find(r => r.status === 'accepted' && !r.completedAt) })
+                renderAcceptedDateDetails({ request: sharedState.dateRequests.find(r => r.status === 'accepted' && !r.completedAt) })
               )}
             </motion.div>
           ) : (
             <>
-              {currentView === 'discovery' && renderDiscoveryView()}
-              {currentView === 'requests' && renderRequestsView()}
-              {currentView === 'dates' && renderDatesView()}
+              {(sharedState.currentView === 'discovery' || currentView === 'discovery') && renderDiscoveryView()}
+              {(sharedState.currentView === 'requests' || currentView === 'requests') && renderRequestsView()}
+              {(sharedState.currentView === 'dates' || currentView === 'dates') && renderDatesView()}
             </>
           )}
         </AnimatePresence>
-        </div>
+      </div>
+
+      {/* Only show UserSwitcher if not in split view */}
+      {!isSplitView && <UserSwitcher />}
+      
+      {/* Date Suggestion Modal */}
+      {showDateModal && selectedProfile && (
+        <DateSuggestionModal
+          profile={selectedProfile}
+          onSubmit={handleDateDetailsSubmit}
+          onClose={() => {
+            setShowDateModal(false);
+            setSelectedProfile(null);
+          }}
+        />
+      )}
     </div>
   );
 } 

@@ -21,7 +21,7 @@ export default function AuthCallback() {
         if (result && result.user) {
           // Successfully signed in
           console.log('Successfully signed in:', result.user.email);
-          navigate('/onboarding');
+          navigate('/');
         } else {
           console.error('No auth result found');
           setError('Authentication failed. Please try signing in again.');
@@ -53,7 +53,7 @@ export default function AuthCallback() {
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
             <span className="block sm:inline">{error}</span>
             <button
-              onClick={() => navigate('/signin')}
+              onClick={() => navigate('/login')}
               className="mt-4 w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
             >
               Back to Sign In
