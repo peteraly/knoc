@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import EventSidebar from './EventSidebar';
 import MapView from './MapView';
 import { useEvents } from '../contexts/EventContext';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const Events = () => {
   const { events, selectedEvent, addEvent, editEvent, deleteEvent, selectEvent } = useEvents();
   const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
+  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(true);
 
   useEffect(() => {
     const handleResize = () => {
@@ -17,10 +19,63 @@ const Events = () => {
   }, []);
 
   return (
-    <div className="h-[calc(100vh-64px)] relative">
-      {isPortrait ? (
-        <>
-          <div className="absolute inset-x-0 top-0 z-30 h-32 bg-white border-b border-gray-200">
+    <div className="h-[calc(100vh-64px)] relative overflow-hidden">
+      {/* Map View - Always Full Screen */}
+      <div className="absolute inset-0">
+        <MapView 
+          events={events} 
+          selectedEvent={selectedEvent}
+          onEventSelect={selectEvent}
+        />
+      </div>
+
+      {/* Events Panel */}
+      <AnimatePresence>
+        {isPortrait ? (
+          // Bottom Sheet in Portrait Mode
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: isBottomSheetOpen ? '0%' : '90%' }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 30 }}
+            className="absolute inset-x-0 bottom-0 z-30 bg-white rounded-t-xl shadow-lg"
+            style={{ height: '75vh', touchAction: 'none' }}
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={0.2}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 100) {
+                setIsBottomSheetOpen(false);
+              } else if (info.offset.y < -100) {
+                setIsBottomSheetOpen(true);
+              }
+            }}
+          >
+            {/* Drag Handle */}
+            <div className="w-full h-1.5 flex justify-center items-center py-4">
+              <div className="w-12 h-1 bg-gray-300 rounded-full" />
+            </div>
+
+            <div className="overflow-y-auto h-full pb-safe">
+              <EventSidebar
+                events={events}
+                onAddEvent={addEvent}
+                onEditEvent={editEvent}
+                onDeleteEvent={deleteEvent}
+                selectedEvent={selectedEvent}
+                onEventSelect={selectEvent}
+                isPortrait={isPortrait}
+              />
+            </div>
+          </motion.div>
+        ) : (
+          // Side Panel in Landscape Mode
+          <motion.div
+            initial={{ x: -420 }}
+            animate={{ x: 0 }}
+            exit={{ x: -420 }}
+            className="absolute left-0 top-0 bottom-0 w-[420px] z-30 bg-white shadow-lg"
+          >
             <EventSidebar
               events={events}
               onAddEvent={addEvent}
@@ -30,37 +85,9 @@ const Events = () => {
               onEventSelect={selectEvent}
               isPortrait={isPortrait}
             />
-          </div>
-          <div className="absolute inset-0 z-10">
-            <MapView 
-              events={events} 
-              selectedEvent={selectedEvent}
-              onEventSelect={selectEvent}
-            />
-          </div>
-        </>
-      ) : (
-        <div className="h-full flex">
-          <div className="w-[420px] h-full flex-shrink-0 relative z-30">
-            <EventSidebar
-              events={events}
-              onAddEvent={addEvent}
-              onEditEvent={editEvent}
-              onDeleteEvent={deleteEvent}
-              selectedEvent={selectedEvent}
-              onEventSelect={selectEvent}
-              isPortrait={isPortrait}
-            />
-          </div>
-          <div className="flex-1 relative z-20">
-            <MapView 
-              events={events} 
-              selectedEvent={selectedEvent}
-              onEventSelect={selectEvent}
-            />
-          </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
