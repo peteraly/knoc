@@ -3,11 +3,20 @@ import EventSidebar from './EventSidebar';
 import MapView from './MapView';
 import { useEvents } from '../contexts/EventContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { startOfDay } from 'date-fns';
+
+const TIMELINE_OPTIONS = {
+  DAY: 'day',
+  WEEK: 'week',
+  MONTH: 'month'
+};
 
 const Events = () => {
   const { events, selectedEvent, addEvent, editEvent, deleteEvent, selectEvent } = useEvents();
   const [isPortrait, setIsPortrait] = useState(window.innerHeight > window.innerWidth);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
+  const [timelineView, setTimelineView] = useState(TIMELINE_OPTIONS.DAY);
 
   useEffect(() => {
     const handleResize = () => {
@@ -18,6 +27,13 @@ const Events = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const handleTimelineChange = (view, date) => {
+    setTimelineView(view);
+    if (date) {
+      setSelectedDate(date);
+    }
+  };
+
   return (
     <div className="h-[calc(100vh-64px)] relative overflow-hidden">
       {/* Map View - Always Full Screen */}
@@ -26,6 +42,9 @@ const Events = () => {
           events={events} 
           selectedEvent={selectedEvent}
           onEventSelect={selectEvent}
+          timelineView={timelineView}
+          selectedDate={selectedDate}
+          onTimelineChange={handleTimelineChange}
         />
       </div>
 
@@ -65,6 +84,9 @@ const Events = () => {
                 selectedEvent={selectedEvent}
                 onEventSelect={selectEvent}
                 isPortrait={isPortrait}
+                timelineView={timelineView}
+                selectedDate={selectedDate}
+                onTimelineChange={handleTimelineChange}
               />
             </div>
           </motion.div>
@@ -84,6 +106,9 @@ const Events = () => {
               selectedEvent={selectedEvent}
               onEventSelect={selectEvent}
               isPortrait={isPortrait}
+              timelineView={timelineView}
+              selectedDate={selectedDate}
+              onTimelineChange={handleTimelineChange}
             />
           </motion.div>
         )}

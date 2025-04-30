@@ -1,454 +1,707 @@
 // Sample events data with categories and people needed information
 // This file provides sample data for testing the dashboard as if it were live
 
-export const SAMPLE_EVENTS = [
-  // Your Events (events the user is attending)
+import { addDays, setHours, setMinutes } from 'date-fns';
+
+const sampleLocations = {
+  downtown: [
+    { address: "50 California St, San Francisco, CA 94111", coordinates: { lat: 37.7936, lng: -122.3973 } },
+    { address: "1 Market St, San Francisco, CA 94105", coordinates: { lat: 37.7938, lng: -122.3947 } },
+    { address: "555 California St, San Francisco, CA 94104", coordinates: { lat: 37.7920, lng: -122.4036 } }
+  ],
+  mission: [
+    { address: "3321 24th St, San Francisco, CA 94110", coordinates: { lat: 37.7524, lng: -122.4178 } },
+    { address: "2128 Mission St, San Francisco, CA 94110", coordinates: { lat: 37.7631, lng: -122.4196 } },
+    { address: "3489 20th St, San Francisco, CA 94110", coordinates: { lat: 37.7585, lng: -122.4205 } }
+  ],
+  haight: [
+    { address: "1748 Haight St, San Francisco, CA 94117", coordinates: { lat: 37.7695, lng: -122.4502 } },
+    { address: "557 Ashbury St, San Francisco, CA 94117", coordinates: { lat: 37.7717, lng: -122.4468 } },
+    { address: "1390 Haight St, San Francisco, CA 94117", coordinates: { lat: 37.7702, lng: -122.4455 } }
+  ],
+  castro: [
+    { address: "429 Castro St, San Francisco, CA 94114", coordinates: { lat: 37.7617, lng: -122.4349 } },
+    { address: "2362 Market St, San Francisco, CA 94114", coordinates: { lat: 37.7634, lng: -122.4331 } },
+    { address: "4127 18th St, San Francisco, CA 94114", coordinates: { lat: 37.7608, lng: -122.4360 } }
+  ],
+  soma: [
+    { address: "747 Howard St, San Francisco, CA 94103", coordinates: { lat: 37.7847, lng: -122.4007 } },
+    { address: "1015 Folsom St, San Francisco, CA 94103", coordinates: { lat: 37.7778, lng: -122.4057 } },
+    { address: "375 9th St, San Francisco, CA 94103", coordinates: { lat: 37.7726, lng: -122.4109 } }
+  ],
+  marina: [
+    { address: "2001 Chestnut St, San Francisco, CA 94123", coordinates: { lat: 37.8008, lng: -122.4368 } },
+    { address: "3318 Steiner St, San Francisco, CA 94123", coordinates: { lat: 37.7998, lng: -122.4379 } },
+    { address: "2125 Lombard St, San Francisco, CA 94123", coordinates: { lat: 37.8000, lng: -122.4355 } }
+  ],
+  richmond: [
+    { address: "309 Clement St, San Francisco, CA 94118", coordinates: { lat: 37.7832, lng: -122.4627 } },
+    { address: "5812 Geary Blvd, San Francisco, CA 94121", coordinates: { lat: 37.7805, lng: -122.4831 } },
+    { address: "4401 Balboa St, San Francisco, CA 94121", coordinates: { lat: 37.7755, lng: -122.5067 } }
+  ],
+  sunset: [
+    { address: "1396 9th Ave, San Francisco, CA 94122", coordinates: { lat: 37.7632, lng: -122.4660 } },
+    { address: "2234 Irving St, San Francisco, CA 94122", coordinates: { lat: 37.7638, lng: -122.4826 } },
+    { address: "3655 Lawton St, San Francisco, CA 94122", coordinates: { lat: 37.7575, lng: -122.4989 } }
+  ],
+  'nob-hill': [
+    { address: "1075 California St, San Francisco, CA 94108", coordinates: { lat: 37.7908, lng: -122.4134 } },
+    { address: "905 Powell St, San Francisco, CA 94108", coordinates: { lat: 37.7912, lng: -122.4101 } },
+    { address: "1111 Sacramento St, San Francisco, CA 94108", coordinates: { lat: 37.7923, lng: -122.4145 } }
+  ],
+  'north-beach': [
+    { address: "600 Columbus Ave, San Francisco, CA 94133", coordinates: { lat: 37.8005, lng: -122.4119 } },
+    { address: "1570 Stockton St, San Francisco, CA 94133", coordinates: { lat: 37.8001, lng: -122.4089 } },
+    { address: "1512 Grant Ave, San Francisco, CA 94133", coordinates: { lat: 37.7997, lng: -122.4073 } }
+  ]
+};
+
+const eventCategories = [
   {
-    id: '101',
-    title: 'Sourdough Baking Workshop',
-    description: 'Learn the art of sourdough bread making from scratch',
-    date: '2025-01-05',
-    time: '10:00',
-    location: '1398 University Ave, Berkeley, CA 94702',
-    coordinates: [-122.2830, 37.8697],
-    emoji: '🍞',
-    category: 'food',
-    status: 'confirmed',
-    maxAttendees: 15,
-    minAttendees: 5,
-    attendees: ['current-user', 'user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11'],
-    hosts: ['host-1'],
-    registrationDeadline: '2025-01-04',
-    cancellationDeadline: '2025-01-03',
-    pricing: {
-      standard: 45,
-      earlyBird: 35
-    },
-    perks: {
-      standard: ['Take home your own sourdough starter', 'Recipe booklet'],
-      vip: []
-    }
+    id: 'dining',
+    name: 'Dining',
+    emoji: '🍽️',
+    subcategories: [
+      { id: 'restaurant', name: 'Restaurant', emoji: '🍴' },
+      { id: 'cafe', name: 'Cafe', emoji: '☕' },
+      { id: 'bar', name: 'Bar', emoji: '🍸' },
+      { id: 'food-truck', name: 'Food Truck', emoji: '🚚' }
+    ]
   },
   {
-    id: '102',
-    title: 'Urban Photography Walk',
-    description: 'Capture the essence of SF architecture',
-    date: '2025-01-05',
-    time: '14:00',
-    location: '600 Montgomery St, San Francisco, CA 94111',
-    coordinates: [-122.4033, 37.7955],
-    emoji: '📸',
-    category: 'art',
-    status: 'confirmed',
-    maxAttendees: 12,
-    minAttendees: 4,
-    attendees: ['current-user', 'user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'],
-    hosts: ['host-2'],
-    registrationDeadline: '2025-01-04',
-    cancellationDeadline: '2025-01-03',
-    pricing: {
-      standard: 30,
-      earlyBird: 25
-    },
-    perks: {
-      standard: ['Professional photography tips', 'Best spots guide'],
-      vip: []
-    }
+    id: 'fitness',
+    name: 'Fitness',
+    emoji: '💪',
+    subcategories: [
+      { id: 'yoga', name: 'Yoga', emoji: '🧘' },
+      { id: 'running', name: 'Running', emoji: '🏃' },
+      { id: 'cycling', name: 'Cycling', emoji: '🚴' },
+      { id: 'hiking', name: 'Hiking', emoji: '🥾' }
+    ]
   },
   {
-    id: '103',
-    title: 'Jazz Night at Fox Theater',
-    description: 'Evening of classic jazz and modern fusion',
-    date: '2025-01-10',
-    time: '19:30',
-    location: '1807 Telegraph Ave, Oakland, CA 94612',
-    coordinates: [-122.2710, 37.8080],
-    emoji: '🎷',
-    category: 'music',
-    status: 'confirmed',
-    maxAttendees: 30,
-    minAttendees: 15,
-    attendees: ['current-user', 'user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11', 'user12', 'user13', 'user14', 'user15', 'user16', 'user17', 'user18', 'user19', 'user20', 'user21', 'user22', 'user23', 'user24', 'user25'],
-    hosts: ['host-3'],
-    registrationDeadline: '2025-01-09',
-    cancellationDeadline: '2025-01-08',
-    pricing: {
-      standard: 65,
-      vip: 120,
-      earlyBird: 50,
-      earlyBirdVip: 95
-    },
-    perks: {
-      standard: ['Welcome drink', 'Program booklet'],
-      vip: ['Meet the artists', 'VIP lounge access', 'Complimentary drinks']
-    }
+    id: 'arts',
+    name: 'Arts & Culture',
+    emoji: '🎨',
+    subcategories: [
+      { id: 'museum', name: 'Museum', emoji: '🏛️' },
+      { id: 'gallery', name: 'Gallery', emoji: '🖼️' },
+      { id: 'theater', name: 'Theater', emoji: '🎭' },
+      { id: 'music', name: 'Music', emoji: '🎵' }
+    ]
   },
   {
-    id: '104',
-    title: 'Tech Meetup: AI and Machine Learning',
-    description: 'Discussion on the latest developments in AI and ML',
-    date: '2025-01-15',
-    time: '18:30',
-    location: '375 Alabama St, San Francisco, CA 94110',
-    coordinates: [-122.4127, 37.7641],
-    emoji: '🤖',
-    category: 'tech',
-    status: 'upcoming',
-    maxAttendees: 50,
-    minAttendees: 10,
-    attendees: ['current-user', 'user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9'],
-    hosts: ['host-4'],
-    registrationDeadline: '2025-01-14',
-    cancellationDeadline: '2025-01-13',
-    pricing: {
-      standard: 0,
-      earlyBird: 0
-    },
-    perks: {
-      standard: ['Networking opportunity', 'Light refreshments'],
-      vip: []
-    }
+    id: 'tech',
+    name: 'Tech',
+    emoji: '💻',
+    subcategories: [
+      { id: 'workshop', name: 'Workshop', emoji: '🔧' },
+      { id: 'networking', name: 'Networking', emoji: '🤝' },
+      { id: 'hackathon', name: 'Hackathon', emoji: '👨‍💻' },
+      { id: 'conference', name: 'Conference', emoji: '🎤' }
+    ]
   },
   {
-    id: '105',
-    title: 'Valentine\'s Chocolate Making',
-    description: 'Create artisanal chocolates',
-    date: '2025-02-13',
-    time: '15:00',
-    location: '900 North Point St, San Francisco, CA 94109',
-    coordinates: [-122.4229, 37.8055],
-    emoji: '🍫',
-    category: 'food',
-    status: 'upcoming',
-    maxAttendees: 20,
-    minAttendees: 8,
-    attendees: ['current-user', 'user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7'],
-    hosts: ['host-5'],
-    registrationDeadline: '2025-02-12',
-    cancellationDeadline: '2025-02-11',
-    pricing: {
-      standard: 75,
-      earlyBird: 60
-    },
-    perks: {
-      standard: ['Take home your creations', 'Recipe booklet'],
-      vip: []
-    }
-  },
-  
-  // Discover Events (events the user can join)
-  {
-    id: '201',
-    title: 'Sunset Yoga',
-    description: 'Beachside yoga session',
-    date: '2025-01-12',
-    time: '17:00',
-    location: '1000 Great Highway, San Francisco, CA 94121',
-    coordinates: [-122.5092, 37.7697],
-    emoji: '🧘‍♀️',
-    category: 'sports',
-    status: 'upcoming',
-    maxAttendees: 25,
-    minAttendees: 5,
-    attendees: ['user1', 'user2', 'user3', 'user4'],
-    hosts: ['host-6'],
-    registrationDeadline: '2025-01-11',
-    cancellationDeadline: '2025-01-10',
-    pricing: {
-      standard: 25,
-      earlyBird: 20
-    },
-    perks: {
-      standard: ['Yoga mat rental', 'Water provided'],
-      vip: []
-    }
-  },
-  {
-    id: '202',
-    title: 'Wine Tasting Evening',
-    description: 'Napa Valley wine exploration',
-    date: '2025-02-20',
-    time: '18:00',
-    location: '855 El Camino Real, Palo Alto, CA 94301',
-    coordinates: [-122.1082, 37.4380],
-    emoji: '🍷',
-    category: 'food',
-    status: 'upcoming',
-    maxAttendees: 30,
-    minAttendees: 10,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8'],
-    hosts: ['host-7'],
-    registrationDeadline: '2025-02-19',
-    cancellationDeadline: '2025-02-18',
-    pricing: {
-      standard: 85,
-      earlyBird: 70
-    },
-    perks: {
-      standard: ['Wine tasting guide', 'Light appetizers'],
-      vip: []
-    }
-  },
-  {
-    id: '203',
-    title: 'Spring Garden Workshop',
-    description: 'Learn sustainable gardening practices',
-    date: '2025-03-01',
-    time: '09:00',
-    location: '1000 El Camino Real, San Bruno, CA 94066',
-    coordinates: [-122.4430, 37.6305],
-    emoji: '🌱',
-    category: 'outdoor',
-    status: 'upcoming',
-    maxAttendees: 25,
-    minAttendees: 8,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5'],
-    hosts: ['host-8'],
-    registrationDeadline: '2025-02-28',
-    cancellationDeadline: '2025-02-27',
-    pricing: {
-      standard: 40,
-      earlyBird: 30
-    },
-    perks: {
-      standard: ['Seed packet', 'Gardening tools'],
-      vip: []
-    }
-  },
-  {
-    id: '204',
-    title: 'St. Patrick\'s Day Run',
-    description: '5K fun run through Golden Gate Park',
-    date: '2025-03-17',
-    time: '08:00',
-    location: '501 Stanyan St, San Francisco, CA 94117',
-    coordinates: [-122.4759, 37.7726],
-    emoji: '🍀',
-    category: 'sports',
-    status: 'upcoming',
-    maxAttendees: 150,
-    minAttendees: 30,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11', 'user12', 'user13', 'user14', 'user15', 'user16', 'user17', 'user18', 'user19', 'user20', 'user21', 'user22', 'user23', 'user24', 'user25', 'user26', 'user27', 'user28'],
-    hosts: ['host-9'],
-    registrationDeadline: '2025-03-16',
-    cancellationDeadline: '2025-03-15',
-    pricing: {
-      standard: 35,
-      earlyBird: 25
-    },
-    perks: {
-      standard: ['Race t-shirt', 'Finisher medal', 'Post-race refreshments'],
-      vip: []
-    }
-  },
-  {
-    id: '205',
-    title: 'Cherry Blossom Festival',
-    description: 'Annual celebration in Japantown',
-    date: '2025-04-05',
-    time: '10:00',
-    location: '1610 Geary Blvd, San Francisco, CA 94115',
-    coordinates: [-122.4299, 37.7845],
-    emoji: '🌸',
-    category: 'social',
-    status: 'upcoming',
-    maxAttendees: 200,
-    minAttendees: 50,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11', 'user12', 'user13', 'user14', 'user15', 'user16', 'user17', 'user18', 'user19', 'user20', 'user21', 'user22', 'user23', 'user24', 'user25', 'user26', 'user27', 'user28', 'user29', 'user30', 'user31', 'user32', 'user33', 'user34', 'user35', 'user36', 'user37', 'user38', 'user39', 'user40', 'user41', 'user42', 'user43', 'user44', 'user45'],
-    hosts: ['host-10'],
-    registrationDeadline: '2025-04-04',
-    cancellationDeadline: '2025-04-03',
-    pricing: {
-      standard: 20,
-      earlyBird: 15
-    },
-    perks: {
-      standard: ['Festival guide', 'Traditional snacks'],
-      vip: []
-    }
-  },
-  {
-    id: '206',
-    title: 'Earth Day Clean-up',
-    description: 'Community beach cleaning',
-    date: '2025-04-22',
-    time: '09:00',
-    location: 'Baker Beach, San Francisco, CA 94129',
-    coordinates: [-122.4798, 37.7933],
-    emoji: '🌍',
-    category: 'outdoor',
-    status: 'upcoming',
-    maxAttendees: 150,
-    minAttendees: 20,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11', 'user12', 'user13', 'user14', 'user15', 'user16', 'user17', 'user18'],
-    hosts: ['host-11'],
-    registrationDeadline: '2025-04-21',
-    cancellationDeadline: '2025-04-20',
-    pricing: {
-      standard: 0,
-      earlyBird: 0
-    },
-    perks: {
-      standard: ['Clean-up supplies', 'Refreshments'],
-      vip: []
-    }
-  },
-  {
-    id: '207',
-    title: 'Bay to Breakers',
-    description: 'Annual city-wide running event',
-    date: '2025-05-18',
-    time: '07:00',
-    location: '587 Howard St, San Francisco, CA 94105',
-    coordinates: [-122.3975, 37.7873],
-    emoji: '🏃',
-    category: 'sports',
-    status: 'upcoming',
-    maxAttendees: 500,
-    minAttendees: 100,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11', 'user12', 'user13', 'user14', 'user15', 'user16', 'user17', 'user18', 'user19', 'user20', 'user21', 'user22', 'user23', 'user24', 'user25', 'user26', 'user27', 'user28', 'user29', 'user30', 'user31', 'user32', 'user33', 'user34', 'user35', 'user36', 'user37', 'user38', 'user39', 'user40', 'user41', 'user42', 'user43', 'user44', 'user45', 'user46', 'user47', 'user48', 'user49', 'user50', 'user51', 'user52', 'user53', 'user54', 'user55', 'user56', 'user57', 'user58', 'user59', 'user60', 'user61', 'user62', 'user63', 'user64', 'user65', 'user66', 'user67', 'user68', 'user69', 'user70', 'user71', 'user72', 'user73', 'user74', 'user75', 'user76', 'user77', 'user78', 'user79', 'user80', 'user81', 'user82', 'user83', 'user84', 'user85', 'user86', 'user87', 'user88', 'user89', 'user90', 'user91', 'user92', 'user93', 'user94', 'user95'],
-    hosts: ['host-12'],
-    registrationDeadline: '2025-05-17',
-    cancellationDeadline: '2025-05-16',
-    pricing: {
-      standard: 65,
-      earlyBird: 50
-    },
-    perks: {
-      standard: ['Race bib', 'Finisher medal', 'Post-race party access'],
-      vip: []
-    }
-  },
-  {
-    id: '208',
-    title: 'Memorial Day BBQ',
-    description: 'Community gathering and grilling',
-    date: '2025-05-26',
-    time: '12:00',
-    location: '50 Hagiwara Tea Garden Dr, San Francisco, CA 94118',
-    coordinates: [-122.4702, 37.7702],
-    emoji: '🍖',
-    category: 'food',
-    status: 'upcoming',
-    maxAttendees: 100,
-    minAttendees: 20,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11', 'user12', 'user13', 'user14', 'user15', 'user16', 'user17'],
-    hosts: ['host-13'],
-    registrationDeadline: '2025-05-25',
-    cancellationDeadline: '2025-05-24',
-    pricing: {
-      standard: 25,
-      earlyBird: 20
-    },
-    perks: {
-      standard: ['BBQ supplies', 'Side dishes', 'Drinks'],
-      vip: []
-    }
-  },
-  {
-    id: '209',
-    title: 'Pride Parade',
-    description: 'Annual LGBTQ+ celebration',
-    date: '2025-06-29',
-    time: '11:00',
-    location: 'Market St & Castro St, San Francisco, CA 94114',
-    coordinates: [-122.4350, 37.7620],
-    emoji: '🌈',
-    category: 'social',
-    status: 'upcoming',
-    maxAttendees: 1000,
-    minAttendees: 200,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11', 'user12', 'user13', 'user14', 'user15', 'user16', 'user17', 'user18', 'user19', 'user20', 'user21', 'user22', 'user23', 'user24', 'user25', 'user26', 'user27', 'user28', 'user29', 'user30', 'user31', 'user32', 'user33', 'user34', 'user35', 'user36', 'user37', 'user38', 'user39', 'user40', 'user41', 'user42', 'user43', 'user44', 'user45', 'user46', 'user47', 'user48', 'user49', 'user50', 'user51', 'user52', 'user53', 'user54', 'user55', 'user56', 'user57', 'user58', 'user59', 'user60', 'user61', 'user62', 'user63', 'user64', 'user65', 'user66', 'user67', 'user68', 'user69', 'user70', 'user71', 'user72', 'user73', 'user74', 'user75', 'user76', 'user77', 'user78', 'user79', 'user80', 'user81', 'user82', 'user83', 'user84', 'user85', 'user86', 'user87', 'user88', 'user89', 'user90', 'user91', 'user92', 'user93', 'user94', 'user95', 'user96', 'user97', 'user98', 'user99', 'user100', 'user101', 'user102', 'user103', 'user104', 'user105', 'user106', 'user107', 'user108', 'user109', 'user110', 'user111', 'user112', 'user113', 'user114', 'user115', 'user116', 'user117', 'user118', 'user119', 'user120', 'user121', 'user122', 'user123', 'user124', 'user125', 'user126', 'user127', 'user128', 'user129', 'user130', 'user131', 'user132', 'user133', 'user134', 'user135', 'user136', 'user137', 'user138', 'user139', 'user140', 'user141', 'user142', 'user143', 'user144', 'user145', 'user146', 'user147', 'user148', 'user149', 'user150', 'user151', 'user152', 'user153', 'user154', 'user155', 'user156', 'user157', 'user158', 'user159', 'user160', 'user161', 'user162', 'user163', 'user164', 'user165', 'user166', 'user167', 'user168', 'user169', 'user170', 'user171', 'user172', 'user173', 'user174', 'user175', 'user176', 'user177', 'user178', 'user179', 'user180', 'user181', 'user182', 'user183', 'user184', 'user185', 'user186', 'user187', 'user188', 'user189', 'user190', 'user191', 'user192', 'user193', 'user194', 'user195'],
-    hosts: ['host-14'],
-    registrationDeadline: '2025-06-28',
-    cancellationDeadline: '2025-06-27',
-    pricing: {
-      standard: 0,
-      earlyBird: 0
-    },
-    perks: {
-      standard: ['Parade guide', 'Pride swag'],
-      vip: []
-    }
-  },
-  {
-    id: '210',
-    title: 'Summer Solstice Festival',
-    description: 'Music and art celebration',
-    date: '2025-06-21',
-    time: '16:00',
-    location: 'Golden Gate Park, San Francisco, CA 94122',
-    coordinates: [-122.4862, 37.7694],
-    emoji: '☀️',
-    category: 'music',
-    status: 'upcoming',
-    maxAttendees: 300,
-    minAttendees: 50,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11', 'user12', 'user13', 'user14', 'user15', 'user16', 'user17', 'user18', 'user19', 'user20', 'user21', 'user22', 'user23', 'user24', 'user25', 'user26', 'user27', 'user28', 'user29', 'user30', 'user31', 'user32', 'user33', 'user34', 'user35', 'user36', 'user37', 'user38', 'user39', 'user40', 'user41', 'user42', 'user43', 'user44', 'user45'],
-    hosts: ['host-15'],
-    registrationDeadline: '2025-06-20',
-    cancellationDeadline: '2025-06-19',
-    pricing: {
-      standard: 40,
-      earlyBird: 30
-    },
-    perks: {
-      standard: ['Festival guide', 'Food vouchers'],
-      vip: []
-    }
-  },
-  {
-    id: '211',
-    title: 'Fourth of July Fireworks',
-    description: 'Independence Day celebration',
-    date: '2025-07-04',
-    time: '21:00',
-    location: 'Pier 39, San Francisco, CA 94133',
-    coordinates: [-122.4103, 37.8087],
-    emoji: '🎆',
-    category: 'social',
-    status: 'upcoming',
-    maxAttendees: 5000,
-    minAttendees: 500,
-    attendees: ['user1', 'user2', 'user3', 'user4', 'user5', 'user6', 'user7', 'user8', 'user9', 'user10', 'user11', 'user12', 'user13', 'user14', 'user15', 'user16', 'user17', 'user18', 'user19', 'user20', 'user21', 'user22', 'user23', 'user24', 'user25', 'user26', 'user27', 'user28', 'user29', 'user30', 'user31', 'user32', 'user33', 'user34', 'user35', 'user36', 'user37', 'user38', 'user39', 'user40', 'user41', 'user42', 'user43', 'user44', 'user45', 'user46', 'user47', 'user48', 'user49', 'user50', 'user51', 'user52', 'user53', 'user54', 'user55', 'user56', 'user57', 'user58', 'user59', 'user60', 'user61', 'user62', 'user63', 'user64', 'user65', 'user66', 'user67', 'user68', 'user69', 'user70', 'user71', 'user72', 'user73', 'user74', 'user75', 'user76', 'user77', 'user78', 'user79', 'user80', 'user81', 'user82', 'user83', 'user84', 'user85', 'user86', 'user87', 'user88', 'user89', 'user90', 'user91', 'user92', 'user93', 'user94', 'user95', 'user96', 'user97', 'user98', 'user99', 'user100', 'user101', 'user102', 'user103', 'user104', 'user105', 'user106', 'user107', 'user108', 'user109', 'user110', 'user111', 'user112', 'user113', 'user114', 'user115', 'user116', 'user117', 'user118', 'user119', 'user120', 'user121', 'user122', 'user123', 'user124', 'user125', 'user126', 'user127', 'user128', 'user129', 'user130', 'user131', 'user132', 'user133', 'user134', 'user135', 'user136', 'user137', 'user138', 'user139', 'user140', 'user141', 'user142', 'user143', 'user144', 'user145', 'user146', 'user147', 'user148', 'user149', 'user150', 'user151', 'user152', 'user153', 'user154', 'user155', 'user156', 'user157', 'user158', 'user159', 'user160', 'user161', 'user162', 'user163', 'user164', 'user165', 'user166', 'user167', 'user168', 'user169', 'user170', 'user171', 'user172', 'user173', 'user174', 'user175', 'user176', 'user177', 'user178', 'user179', 'user180', 'user181', 'user182', 'user183', 'user184', 'user185', 'user186', 'user187', 'user188', 'user189', 'user190', 'user191', 'user192', 'user193', 'user194', 'user195', 'user196', 'user197', 'user198', 'user199', 'user200', 'user201', 'user202', 'user203', 'user204', 'user205', 'user206', 'user207', 'user208', 'user209', 'user210', 'user211', 'user212', 'user213', 'user214', 'user215', 'user216', 'user217', 'user218', 'user219', 'user220', 'user221', 'user222', 'user223', 'user224', 'user225', 'user226', 'user227', 'user228', 'user229', 'user230', 'user231', 'user232', 'user233', 'user234', 'user235', 'user236', 'user237', 'user238', 'user239', 'user240', 'user241', 'user242', 'user243', 'user244', 'user245', 'user246', 'user247', 'user248', 'user249', 'user250', 'user251', 'user252', 'user253', 'user254', 'user255', 'user256', 'user257', 'user258', 'user259', 'user260', 'user261', 'user262', 'user263', 'user264', 'user265', 'user266', 'user267', 'user268', 'user269', 'user270', 'user271', 'user272', 'user273', 'user274', 'user275', 'user276', 'user277', 'user278', 'user279', 'user280', 'user281', 'user282', 'user283', 'user284', 'user285', 'user286', 'user287', 'user288', 'user289', 'user290', 'user291', 'user292', 'user293', 'user294', 'user295', 'user296', 'user297', 'user298', 'user299', 'user300', 'user301', 'user302', 'user303', 'user304', 'user305', 'user306', 'user307', 'user308', 'user309', 'user310', 'user311', 'user312', 'user313', 'user314', 'user315', 'user316', 'user317', 'user318', 'user319', 'user320', 'user321', 'user322', 'user323', 'user324', 'user325', 'user326', 'user327', 'user328', 'user329', 'user330', 'user331', 'user332', 'user333', 'user334', 'user335', 'user336', 'user337', 'user338', 'user339', 'user340', 'user341', 'user342', 'user343', 'user344', 'user345', 'user346', 'user347', 'user348', 'user349', 'user350', 'user351', 'user352', 'user353', 'user354', 'user355', 'user356', 'user357', 'user358', 'user359', 'user360', 'user361', 'user362', 'user363', 'user364', 'user365', 'user366', 'user367', 'user368', 'user369', 'user370', 'user371', 'user372', 'user373', 'user374', 'user375', 'user376', 'user377', 'user378', 'user379', 'user380', 'user381', 'user382', 'user383', 'user384', 'user385', 'user386', 'user387', 'user388', 'user389', 'user390', 'user391', 'user392', 'user393', 'user394', 'user395', 'user396', 'user397', 'user398', 'user399', 'user400', 'user401', 'user402', 'user403', 'user404', 'user405', 'user406', 'user407', 'user408', 'user409', 'user410', 'user411', 'user412', 'user413', 'user414', 'user415', 'user416', 'user417', 'user418', 'user419', 'user420', 'user421', 'user422', 'user423', 'user424', 'user425', 'user426', 'user427', 'user428', 'user429', 'user430', 'user431', 'user432', 'user433', 'user434', 'user435', 'user436', 'user437', 'user438', 'user439', 'user440', 'user441', 'user442', 'user443', 'user444', 'user445', 'user446', 'user447', 'user448', 'user449', 'user450', 'user451', 'user452', 'user453', 'user454', 'user455', 'user456', 'user457', 'user458', 'user459', 'user460', 'user461', 'user462', 'user463', 'user464', 'user465', 'user466', 'user467', 'user468', 'user469', 'user470', 'user471', 'user472', 'user473', 'user474', 'user475', 'user476', 'user477', 'user478', 'user479', 'user480', 'user481', 'user482', 'user483', 'user484', 'user485', 'user486', 'user487', 'user488', 'user489', 'user490', 'user491', 'user492', 'user493', 'user494', 'user495'],
-    hosts: ['host-16'],
-    registrationDeadline: '2025-07-03',
-    cancellationDeadline: '2025-07-02',
-    pricing: {
-      standard: 30,
-      earlyBird: 20
-    },
-    perks: {
-      standard: ['Viewing area access', 'Patriotic swag'],
-      vip: []
-    }
+    id: 'outdoor',
+    name: 'Outdoor',
+    emoji: '🌳',
+    subcategories: [
+      { id: 'picnic', name: 'Picnic', emoji: '🧺' },
+      { id: 'beach', name: 'Beach', emoji: '🏖️' },
+      { id: 'sports', name: 'Sports', emoji: '⚽' },
+      { id: 'gardening', name: 'Gardening', emoji: '🌱' }
+    ]
   }
 ];
 
+const generateRandomDate = (start, end) => {
+  return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
+};
+
+const generateRandomTime = () => {
+  const hour = Math.floor(Math.random() * 14) + 8; // 8 AM to 10 PM
+  const minute = Math.floor(Math.random() * 4) * 15; // 0, 15, 30, or 45 minutes
+  return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+};
+
+const generateSampleEvents = () => {
+  const events = [];
+  const startDate = new Date('2025-01-01');
+  const endDate = new Date('2025-12-31');
+
+  // Add May 2025 events for each category
+  const mayEvents = [
+    // Dining Events (🍽️)
+    {
+      id: 'dining-may-1',
+      title: 'Farm-to-Table Dinner Experience',
+      category: 'dining',
+      subcategory: 'restaurant',
+      emoji: '🍽️',
+      date: '2025-05-08',
+      time: '7:00 PM',
+      location: sampleLocations['nob-hill'][0].address,
+      coordinates: sampleLocations['nob-hill'][0].coordinates,
+      description: 'Join us for an intimate farm-to-table dining experience featuring seasonal ingredients from local farms.',
+      minAttendees: 8,
+      maxAttendees: 16,
+      attendees: ['user-1', 'user-2'],
+      price: 85,
+      registrationDeadline: '2025-05-06',
+      photos: []
+    },
+    {
+      id: 'dining-may-2',
+      title: 'Craft Cocktail Workshop',
+      category: 'dining',
+      subcategory: 'bar',
+      emoji: '🍸',
+      date: '2025-05-21',
+      time: '7:30 PM',
+      location: sampleLocations.haight[0].address,
+      coordinates: sampleLocations.haight[0].coordinates,
+      description: 'Learn the art of craft cocktails from expert mixologists. Create and taste unique drink combinations.',
+      minAttendees: 6,
+      maxAttendees: 12,
+      attendees: [],
+      price: 65,
+      registrationDeadline: '2025-05-19',
+      photos: []
+    },
+    {
+      id: 'dining-may-3',
+      title: 'Food Truck Festival',
+      category: 'dining',
+      subcategory: 'food-truck',
+      emoji: '🚚',
+      date: '2025-05-11',
+      time: '11:00 AM',
+      location: sampleLocations.marina[1].address,
+      coordinates: sampleLocations.marina[1].coordinates,
+      description: 'Experience the best food trucks in the city! From gourmet tacos to artisanal ice cream.',
+      minAttendees: 50,
+      maxAttendees: 200,
+      attendees: ['user-10', 'user-11'],
+      price: 10,
+      registrationDeadline: '2025-05-09',
+      photos: []
+    },
+
+    // Fitness Events (💪)
+    {
+      id: 'fitness-may-1',
+      title: 'HIIT & Brunch',
+      category: 'fitness',
+      subcategory: 'running',
+      emoji: '🏃',
+      date: '2025-05-16',
+      time: '9:00 AM',
+      location: sampleLocations.marina[0].address,
+      coordinates: sampleLocations.marina[0].coordinates,
+      description: 'Start your weekend with an energizing HIIT workout followed by a healthy brunch.',
+      minAttendees: 6,
+      maxAttendees: 20,
+      attendees: ['user-3'],
+      price: 30,
+      registrationDeadline: '2025-05-14',
+      photos: []
+    },
+    {
+      id: 'fitness-may-2',
+      title: 'Sunset Yoga Flow',
+      category: 'fitness',
+      subcategory: 'yoga',
+      emoji: '🧘‍♀️',
+      date: '2025-05-28',
+      time: '6:00 PM',
+      location: sampleLocations.mission[0].address,
+      coordinates: sampleLocations.mission[0].coordinates,
+      description: 'Unwind with a relaxing yoga session as the sun sets over the city.',
+      minAttendees: 5,
+      maxAttendees: 20,
+      attendees: [],
+      price: 18,
+      registrationDeadline: '2025-05-26',
+      photos: []
+    },
+    {
+      id: 'fitness-may-3',
+      title: 'Trail Running Adventure',
+      category: 'fitness',
+      subcategory: 'running',
+      emoji: '🏃',
+      date: '2025-05-19',
+      time: '7:30 AM',
+      location: sampleLocations.richmond[0].address,
+      coordinates: sampleLocations.richmond[0].coordinates,
+      description: 'Join us for a morning trail run through beautiful trails. All skill levels welcome!',
+      minAttendees: 8,
+      maxAttendees: 20,
+      attendees: ['user-12'],
+      price: 15,
+      registrationDeadline: '2025-05-17',
+      photos: []
+    },
+
+    // Arts & Culture Events (🎨)
+    {
+      id: 'arts-may-1',
+      title: 'Interactive Art Exhibition',
+      category: 'arts',
+      subcategory: 'gallery',
+      emoji: '🎨',
+      date: '2025-05-23',
+      time: '6:30 PM',
+      location: sampleLocations.soma[0].address,
+      coordinates: sampleLocations.soma[0].coordinates,
+      description: 'Experience art in a new way with this interactive exhibition featuring local artists.',
+      minAttendees: 15,
+      maxAttendees: 40,
+      attendees: ['user-4', 'user-5', 'user-6'],
+      price: 25,
+      registrationDeadline: '2025-05-21',
+      photos: []
+    },
+    {
+      id: 'arts-may-2',
+      title: 'Jazz Night & Paint Session',
+      category: 'arts',
+      subcategory: 'music',
+      emoji: '🎷',
+      date: '2025-05-25',
+      time: '7:00 PM',
+      location: sampleLocations['north-beach'][0].address,
+      coordinates: sampleLocations['north-beach'][0].coordinates,
+      description: 'Paint while enjoying live jazz music. No experience needed!',
+      minAttendees: 10,
+      maxAttendees: 25,
+      attendees: [],
+      price: 55,
+      registrationDeadline: '2025-05-23',
+      photos: []
+    },
+    {
+      id: 'arts-may-3',
+      title: 'Photography Walk',
+      category: 'arts',
+      subcategory: 'gallery',
+      emoji: '📸',
+      date: '2025-05-17',
+      time: '4:00 PM',
+      location: sampleLocations['north-beach'][1].address,
+      coordinates: sampleLocations['north-beach'][1].coordinates,
+      description: 'Capture the vibrant culture and architecture of the city with fellow photographers.',
+      minAttendees: 5,
+      maxAttendees: 15,
+      attendees: [],
+      price: 20,
+      registrationDeadline: '2025-05-15',
+      photos: []
+    },
+
+    // Tech Events (💻)
+    {
+      id: 'tech-may-1',
+      title: 'AI & Machine Learning Workshop',
+      category: 'tech',
+      subcategory: 'workshop',
+      emoji: '🤖',
+      date: '2025-05-14',
+      time: '2:00 PM',
+      location: sampleLocations.downtown[0].address,
+      coordinates: sampleLocations.downtown[0].coordinates,
+      description: 'Deep dive into the latest AI and ML technologies with hands-on exercises.',
+      minAttendees: 10,
+      maxAttendees: 30,
+      attendees: ['user-7', 'user-8'],
+      price: 50,
+      registrationDeadline: '2025-05-12',
+      photos: []
+    },
+    {
+      id: 'tech-may-2',
+      title: 'Startup Networking Mixer',
+      category: 'tech',
+      subcategory: 'networking',
+      emoji: '💻',
+      date: '2025-05-15',
+      time: '6:00 PM',
+      location: sampleLocations.soma[1].address,
+      coordinates: sampleLocations.soma[1].coordinates,
+      description: 'Connect with fellow entrepreneurs and startup enthusiasts.',
+      minAttendees: 20,
+      maxAttendees: 100,
+      attendees: [],
+      price: 0,
+      registrationDeadline: '2025-05-13',
+      photos: []
+    },
+    {
+      id: 'tech-may-3',
+      title: 'Web3 Hackathon',
+      category: 'tech',
+      subcategory: 'hackathon',
+      emoji: '👨‍💻',
+      date: '2025-05-25',
+      time: '9:00 AM',
+      location: sampleLocations.soma[2].address,
+      coordinates: sampleLocations.soma[2].coordinates,
+      description: 'Build innovative blockchain projects in this one-day hackathon.',
+      minAttendees: 20,
+      maxAttendees: 50,
+      attendees: [],
+      price: 0,
+      registrationDeadline: '2025-05-23',
+      photos: []
+    },
+
+    // Outdoor Events (🌳)
+    {
+      id: 'outdoor-may-1',
+      title: 'Beach Sports Day',
+      category: 'outdoor',
+      subcategory: 'sports',
+      emoji: '⚽',
+      date: '2025-05-30',
+      time: '6:30 PM',
+      location: sampleLocations.sunset[0].address,
+      coordinates: sampleLocations.sunset[0].coordinates,
+      description: 'Join us for a fun evening of beach sports including volleyball and frisbee!',
+      minAttendees: 8,
+      maxAttendees: 25,
+      attendees: ['user-9'],
+      price: 15,
+      registrationDeadline: '2025-05-28',
+      photos: []
+    },
+    {
+      id: 'outdoor-may-2',
+      title: 'Urban Garden Workshop',
+      category: 'outdoor',
+      subcategory: 'gardening',
+      emoji: '🌱',
+      date: '2025-05-18',
+      time: '10:00 AM',
+      location: sampleLocations.mission[1].address,
+      coordinates: sampleLocations.mission[1].coordinates,
+      description: 'Learn urban gardening techniques and start your own herb garden.',
+      minAttendees: 8,
+      maxAttendees: 15,
+      attendees: [],
+      price: 40,
+      registrationDeadline: '2025-05-16',
+      photos: []
+    },
+    {
+      id: 'outdoor-may-3',
+      title: 'Sunset Sailing Adventure',
+      category: 'outdoor',
+      subcategory: 'sports',
+      emoji: '⛵',
+      date: '2025-05-24',
+      time: '4:00 PM',
+      location: sampleLocations.marina[2].address,
+      coordinates: sampleLocations.marina[2].coordinates,
+      description: 'Experience the thrill of sailing on the San Francisco Bay.',
+      minAttendees: 4,
+      maxAttendees: 8,
+      attendees: [],
+      price: 75,
+      registrationDeadline: '2025-05-22',
+      photos: []
+    }
+  ];
+
+  // Add all May events to the events array
+  events.push(...mayEvents);
+
+  // Create 10 events for April 2025 where current attendees < min attendees
+  for (let i = 0; i < 10; i++) {
+    const eventDate = new Date('2025-04-01');
+    eventDate.setDate(eventDate.getDate() + Math.floor(Math.random() * 30)); // Random day in April
+    
+    const neighborhood = Object.keys(sampleLocations)[Math.floor(Math.random() * Object.keys(sampleLocations).length)];
+    const location = sampleLocations[neighborhood][Math.floor(Math.random() * sampleLocations[neighborhood].length)];
+    const category = eventCategories[Math.floor(Math.random() * eventCategories.length)];
+    const subcategory = category.subcategories[Math.floor(Math.random() * category.subcategories.length)];
+    
+    const minAttendees = Math.floor(Math.random() * 5) + 5; // 5 to 9
+    const maxAttendees = minAttendees + Math.floor(Math.random() * 15) + 5; // min + 5 to 20
+    const currentAttendees = Math.floor(Math.random() * (minAttendees - 1)); // Less than minAttendees
+    
+    // Include current user in some events
+    const attendees = Array.from({ length: currentAttendees }, (_, i) => `user-${i + 1}`);
+    if (Math.random() > 0.5) { // 50% chance to include current user
+      attendees.push('current-user');
+    }
+    
+    const event = {
+      id: `april-event-${i + 1}`,
+      title: `${subcategory.emoji} ${subcategory.name} ${category.name} in ${neighborhood.charAt(0).toUpperCase() + neighborhood.slice(1).replace('-', ' ')}`,
+      description: `Join us for an exciting ${subcategory.name.toLowerCase()} ${category.name.toLowerCase()} event in the heart of ${neighborhood.replace('-', ' ')}! Connect with like-minded individuals and enjoy a memorable experience.`,
+      date: eventDate.toISOString().split('T')[0],
+      time: generateRandomTime(),
+      location: location.address,
+      coordinates: location.coordinates,
+      neighborhood: neighborhood,
+      category: category.id,
+      subcategory: subcategory.id,
+      emoji: subcategory.emoji,
+      minAttendees,
+      maxAttendees,
+      currentAttendees: attendees.length,
+      vipSpots: Math.floor(Math.random() * 5),
+      groupMaxSize: Math.floor(Math.random() * 3) + 1,
+      eventType: Math.random() > 0.8 ? 'vip' : 'standard',
+      accessControl: {
+        type: Math.random() > 0.7 ? 'private' : 'public',
+        requiredBadges: [],
+        minPoints: Math.floor(Math.random() * 100),
+        inviteList: []
+      },
+      pricing: {
+        standard: Math.floor(Math.random() * 50) * 5,
+        vip: Math.floor(Math.random() * 100) * 5 + 100,
+        earlyBird: Math.floor(Math.random() * 40) * 5,
+        earlyBirdVip: Math.floor(Math.random() * 80) * 5 + 100,
+        earlyBirdDeadline: addDays(eventDate, -14).toISOString()
+      },
+      perks: {
+        standard: ['Welcome drink', 'Event swag', 'Professional photos'],
+        vip: ['Priority seating', 'Exclusive networking', 'Premium refreshments', 'VIP gift bag']
+      },
+      requiredHosts: Math.floor(Math.random() * 2) + 1,
+      hostingStyle: ['single', 'multi', 'collaborative'][Math.floor(Math.random() * 3)],
+      registrationDeadline: addDays(eventDate, -2).toISOString(),
+      cancellationDeadline: addDays(eventDate, -1).toISOString(),
+      confirmationDeadline: addDays(eventDate, -3).toISOString(),
+      status: 'active',
+      attendees,
+      waitlist: Array.from({ length: Math.floor(Math.random() * 5) }, (_, i) => `waitlist-user-${i + 1}`)
+    };
+
+    events.push(event);
+  }
+
+  // Create 10 events where the current user is attending and needs to invite more people
+  for (let i = 0; i < 10; i++) {
+    const eventDate = generateRandomDate(startDate, endDate);
+    const neighborhood = Object.keys(sampleLocations)[Math.floor(Math.random() * Object.keys(sampleLocations).length)];
+    const location = sampleLocations[neighborhood][Math.floor(Math.random() * sampleLocations[neighborhood].length)];
+    const category = eventCategories[Math.floor(Math.random() * eventCategories.length)];
+    const subcategory = category.subcategories[Math.floor(Math.random() * category.subcategories.length)];
+    
+    const minAttendees = Math.floor(Math.random() * 5) + 5; // 5 to 9
+    const maxAttendees = minAttendees + Math.floor(Math.random() * 15) + 5; // min + 5 to 20
+    const currentAttendees = Math.floor(Math.random() * (minAttendees - 1)); // Less than minAttendees
+    
+    // Always include current user in these events
+    const attendees = Array.from({ length: currentAttendees }, (_, i) => `user-${i + 1}`);
+    attendees.push('current-user');
+    
+    const event = {
+      id: `user-event-${i + 1}`,
+      title: `${subcategory.emoji} ${subcategory.name} ${category.name} in ${neighborhood.charAt(0).toUpperCase() + neighborhood.slice(1).replace('-', ' ')}`,
+      description: `Join us for an exciting ${subcategory.name.toLowerCase()} ${category.name.toLowerCase()} event in the heart of ${neighborhood.replace('-', ' ')}! Connect with like-minded individuals and enjoy a memorable experience.`,
+      date: eventDate.toISOString().split('T')[0],
+      time: generateRandomTime(),
+      location: location.address,
+      coordinates: location.coordinates,
+      neighborhood: neighborhood,
+      category: category.id,
+      subcategory: subcategory.id,
+      emoji: subcategory.emoji,
+      minAttendees,
+      maxAttendees,
+      currentAttendees: attendees.length,
+      vipSpots: Math.floor(Math.random() * 5),
+      groupMaxSize: Math.floor(Math.random() * 3) + 1,
+      eventType: Math.random() > 0.8 ? 'vip' : 'standard',
+      accessControl: {
+        type: Math.random() > 0.7 ? 'private' : 'public',
+        requiredBadges: [],
+        minPoints: Math.floor(Math.random() * 100),
+        inviteList: []
+      },
+      pricing: {
+        standard: Math.floor(Math.random() * 50) * 5,
+        vip: Math.floor(Math.random() * 100) * 5 + 100,
+        earlyBird: Math.floor(Math.random() * 40) * 5,
+        earlyBirdVip: Math.floor(Math.random() * 80) * 5 + 100,
+        earlyBirdDeadline: addDays(eventDate, -14).toISOString()
+      },
+      perks: {
+        standard: ['Welcome drink', 'Event swag', 'Professional photos'],
+        vip: ['Priority seating', 'Exclusive networking', 'Premium refreshments', 'VIP gift bag']
+      },
+      requiredHosts: Math.floor(Math.random() * 2) + 1,
+      hostingStyle: ['single', 'multi', 'collaborative'][Math.floor(Math.random() * 3)],
+      registrationDeadline: addDays(eventDate, -2).toISOString(),
+      cancellationDeadline: addDays(eventDate, -1).toISOString(),
+      confirmationDeadline: addDays(eventDate, -3).toISOString(),
+      status: 'active',
+      attendees,
+      waitlist: Array.from({ length: Math.floor(Math.random() * 5) }, (_, i) => `waitlist-user-${i + 1}`)
+    };
+
+    events.push(event);
+  }
+
+  // Create 5 May events where current user is attending and needs to invite people
+  for (let i = 0; i < 5; i++) {
+    const eventDate = new Date('2025-05-01');
+    eventDate.setDate(eventDate.getDate() + Math.floor(Math.random() * 31)); // Random day in May
+    
+    const neighborhood = Object.keys(sampleLocations)[Math.floor(Math.random() * Object.keys(sampleLocations).length)];
+    const location = sampleLocations[neighborhood][Math.floor(Math.random() * sampleLocations[neighborhood].length)];
+    const category = eventCategories[Math.floor(Math.random() * eventCategories.length)];
+    const subcategory = category.subcategories[Math.floor(Math.random() * category.subcategories.length)];
+    
+    const minAttendees = Math.floor(Math.random() * 5) + 5; // 5 to 9
+    const maxAttendees = minAttendees + Math.floor(Math.random() * 15) + 5; // min + 5 to 20
+    const currentAttendees = Math.floor(Math.random() * (minAttendees - 1)); // Less than minAttendees
+    
+    // Always include current user in these events
+    const attendees = Array.from({ length: currentAttendees }, (_, i) => `user-${i + 1}`);
+    attendees.push('current-user');
+    
+    const event = {
+      id: `may-invite-event-${i + 1}`,
+      title: `${subcategory.emoji} ${subcategory.name} ${category.name} in ${neighborhood.charAt(0).toUpperCase() + neighborhood.slice(1).replace('-', ' ')}`,
+      description: `Join us for an exciting ${subcategory.name.toLowerCase()} ${category.name.toLowerCase()} event in the heart of ${neighborhood.replace('-', ' ')}! Connect with like-minded individuals and enjoy a memorable experience.`,
+      date: eventDate.toISOString().split('T')[0],
+      time: generateRandomTime(),
+      location: location.address,
+      coordinates: location.coordinates,
+      neighborhood: neighborhood,
+      category: category.id,
+      subcategory: subcategory.id,
+      emoji: subcategory.emoji,
+      minAttendees,
+      maxAttendees,
+      currentAttendees: attendees.length,
+      vipSpots: Math.floor(Math.random() * 5),
+      groupMaxSize: Math.floor(Math.random() * 3) + 1,
+      eventType: Math.random() > 0.8 ? 'vip' : 'standard',
+      accessControl: {
+        type: Math.random() > 0.7 ? 'private' : 'public',
+        requiredBadges: [],
+        minPoints: Math.floor(Math.random() * 100),
+        inviteList: []
+      },
+      pricing: {
+        standard: Math.floor(Math.random() * 50) * 5,
+        vip: Math.floor(Math.random() * 100) * 5 + 100,
+        earlyBird: Math.floor(Math.random() * 40) * 5,
+        earlyBirdVip: Math.floor(Math.random() * 80) * 5 + 100,
+        earlyBirdDeadline: addDays(eventDate, -14).toISOString()
+      },
+      perks: {
+        standard: ['Welcome drink', 'Event swag', 'Professional photos'],
+        vip: ['Priority seating', 'Exclusive networking', 'Premium refreshments', 'VIP gift bag']
+      },
+      requiredHosts: Math.floor(Math.random() * 2) + 1,
+      hostingStyle: ['single', 'multi', 'collaborative'][Math.floor(Math.random() * 3)],
+      registrationDeadline: addDays(eventDate, -2).toISOString(),
+      cancellationDeadline: addDays(eventDate, -1).toISOString(),
+      confirmationDeadline: addDays(eventDate, -3).toISOString(),
+      status: 'active',
+      attendees,
+      waitlist: Array.from({ length: Math.floor(Math.random() * 5) }, (_, i) => `waitlist-user-${i + 1}`)
+    };
+
+    events.push(event);
+  }
+
+  // Add more random events
+  for (let i = 10; i < 100; i++) {
+    const eventDate = generateRandomDate(startDate, endDate);
+    const neighborhood = Object.keys(sampleLocations)[Math.floor(Math.random() * Object.keys(sampleLocations).length)];
+    const location = sampleLocations[neighborhood][Math.floor(Math.random() * sampleLocations[neighborhood].length)];
+    const category = eventCategories[Math.floor(Math.random() * eventCategories.length)];
+    const subcategory = category.subcategories[Math.floor(Math.random() * category.subcategories.length)];
+    
+    const minAttendees = Math.floor(Math.random() * 5) + 3; // 3 to 7
+    const maxAttendees = minAttendees + Math.floor(Math.random() * 15) + 5; // min + 5 to 20
+    const currentAttendees = Math.floor(Math.random() * (maxAttendees - minAttendees)) + minAttendees;
+    
+    const event = {
+      id: `event-${i + 1}`,
+      title: `${subcategory.emoji} ${subcategory.name} ${category.name} in ${neighborhood.charAt(0).toUpperCase() + neighborhood.slice(1).replace('-', ' ')}`,
+      description: `Join us for an exciting ${subcategory.name.toLowerCase()} ${category.name.toLowerCase()} event in the heart of ${neighborhood.replace('-', ' ')}! Connect with like-minded individuals and enjoy a memorable experience.`,
+      date: eventDate.toISOString().split('T')[0],
+      time: generateRandomTime(),
+      location: location.address,
+      coordinates: location.coordinates,
+      neighborhood: neighborhood,
+      category: category.id,
+      subcategory: subcategory.id,
+      emoji: subcategory.emoji,
+      minAttendees,
+      maxAttendees,
+      currentAttendees,
+      vipSpots: Math.floor(Math.random() * 5),
+      groupMaxSize: Math.floor(Math.random() * 3) + 1,
+      eventType: Math.random() > 0.8 ? 'vip' : 'standard',
+      accessControl: {
+        type: Math.random() > 0.7 ? 'private' : 'public',
+        requiredBadges: [],
+        minPoints: Math.floor(Math.random() * 100),
+        inviteList: []
+      },
+      pricing: {
+        standard: Math.floor(Math.random() * 50) * 5,
+        vip: Math.floor(Math.random() * 100) * 5 + 100,
+        earlyBird: Math.floor(Math.random() * 40) * 5,
+        earlyBirdVip: Math.floor(Math.random() * 80) * 5 + 100,
+        earlyBirdDeadline: addDays(eventDate, -14).toISOString()
+      },
+      perks: {
+        standard: ['Welcome drink', 'Event swag', 'Professional photos'],
+        vip: ['Priority seating', 'Exclusive networking', 'Premium refreshments', 'VIP gift bag']
+      },
+      requiredHosts: Math.floor(Math.random() * 2) + 1,
+      hostingStyle: ['single', 'multi', 'collaborative'][Math.floor(Math.random() * 3)],
+      registrationDeadline: addDays(eventDate, -2).toISOString(),
+      cancellationDeadline: addDays(eventDate, -1).toISOString(),
+      confirmationDeadline: addDays(eventDate, -3).toISOString(),
+      status: 'active',
+      attendees: Array.from({ length: currentAttendees }, (_, i) => `user-${i + 1}`),
+      waitlist: Array.from({ length: Math.floor(Math.random() * 5) }, (_, i) => `waitlist-user-${i + 1}`)
+    };
+
+    events.push(event);
+  }
+
+  return events;
+};
+
+export const sampleEvents = generateSampleEvents();
+
 // Helper function to get events for the current user (events they're attending)
 export const getUserEvents = () => {
-  return SAMPLE_EVENTS.filter(event => 
+  return sampleEvents.filter(event => 
     event.attendees.includes('current-user')
   );
 };
 
 // Helper function to get discover events (events the user can join)
 export const getDiscoverEvents = () => {
-  return SAMPLE_EVENTS.filter(event => 
+  return sampleEvents.filter(event => 
     !event.attendees.includes('current-user')
   );
 };
 
 // Helper function to get events by category
 export const getEventsByCategory = (category) => {
-  return SAMPLE_EVENTS.filter(event => 
+  return sampleEvents.filter(event => 
     event.category === category
   );
 };
 
 // Helper function to get events by people needed
 export const getEventsByPeopleNeeded = (peopleNeeded) => {
-  return SAMPLE_EVENTS.filter(event => {
+  return sampleEvents.filter(event => {
     const currentAttendees = event.attendees.length;
     const minAttendees = event.minAttendees;
     const peopleNeededCount = minAttendees - currentAttendees;
@@ -459,4 +712,224 @@ export const getEventsByPeopleNeeded = (peopleNeeded) => {
       return peopleNeededCount === parseInt(peopleNeeded);
     }
   });
-}; 
+};
+
+// Drinks Events
+export const drinksEvents = [
+  {
+    id: 'drinks-1',
+    title: 'Wine Tasting Social',
+    category: 'dining',
+    subcategory: 'bar',
+    emoji: '🍷',
+    date: '2025-05-10',
+    time: '6:00 PM',
+    location: 'Urban Wine Bar, Downtown',
+    description: 'Join us for an evening of wine tasting featuring local wineries. Perfect for networking and making new friends!',
+    minAttendees: 8,
+    maxAttendees: 20,
+    attendees: [],
+    price: 35,
+    registrationDeadline: '2025-05-08',
+    photos: []
+  },
+  {
+    id: 'drinks-2',
+    title: 'Craft Beer Workshop',
+    category: 'dining',
+    subcategory: 'bar',
+    emoji: '🍺',
+    date: '2025-05-17',
+    time: '5:30 PM',
+    location: 'Hopworks Brewery',
+    description: 'Learn about craft beer brewing processes and taste different styles of beer with our expert brewmaster.',
+    minAttendees: 6,
+    maxAttendees: 15,
+    attendees: [],
+    price: 40,
+    registrationDeadline: '2025-05-15',
+    photos: []
+  },
+
+  // Sports Events
+  {
+    id: 'sports-1',
+    title: 'Beach Volleyball Tournament',
+    category: 'outdoor',
+    subcategory: 'sports',
+    emoji: '🏐',
+    date: '2025-05-11',
+    time: '10:00 AM',
+    location: 'Sunset Beach',
+    description: 'Join our casual beach volleyball tournament! All skill levels welcome. Teams will be formed on the spot.',
+    minAttendees: 12,
+    maxAttendees: 24,
+    attendees: [],
+    price: 15,
+    registrationDeadline: '2025-05-09',
+    photos: []
+  },
+  {
+    id: 'sports-2',
+    title: 'Morning Yoga in the Park',
+    category: 'fitness',
+    subcategory: 'yoga',
+    emoji: '🧘',
+    date: '2025-05-24',
+    time: '8:00 AM',
+    location: 'Central Park Garden',
+    description: 'Start your weekend with an energizing yoga session in the park. All levels welcome!',
+    minAttendees: 5,
+    maxAttendees: 20,
+    attendees: [],
+    price: 12,
+    registrationDeadline: '2025-05-23',
+    photos: []
+  },
+
+  // Entertainment Events
+  {
+    id: 'entertainment-1',
+    title: 'Comedy Night Showcase',
+    category: 'arts',
+    subcategory: 'theater',
+    emoji: '🎭',
+    date: '2025-05-15',
+    time: '8:00 PM',
+    location: 'Laugh Factory',
+    description: 'An evening of stand-up comedy featuring both upcoming and established local comedians.',
+    minAttendees: 20,
+    maxAttendees: 100,
+    attendees: [],
+    price: 25,
+    registrationDeadline: '2025-05-14',
+    photos: []
+  },
+  {
+    id: 'entertainment-2',
+    title: 'Live Music & Art Night',
+    category: 'arts',
+    subcategory: 'music',
+    emoji: '🎵',
+    date: '2025-05-22',
+    time: '7:30 PM',
+    location: 'The Creative Space',
+    description: 'Experience live music while local artists create artwork in real-time. Interactive and engaging!',
+    minAttendees: 15,
+    maxAttendees: 50,
+    attendees: [],
+    price: 30,
+    registrationDeadline: '2025-05-20',
+    photos: []
+  },
+
+  // Networking Events
+  {
+    id: 'networking-1',
+    title: 'Tech Professionals Mixer',
+    category: 'tech',
+    subcategory: 'networking',
+    emoji: '🤝',
+    date: '2025-05-14',
+    time: '6:30 PM',
+    location: 'Innovation Hub',
+    description: 'Network with professionals from various tech fields. Great opportunity for collaboration and career growth!',
+    minAttendees: 15,
+    maxAttendees: 60,
+    attendees: [],
+    price: 0,
+    registrationDeadline: '2025-05-13',
+    photos: []
+  },
+  {
+    id: 'networking-2',
+    title: 'Creative Industries Breakfast',
+    category: 'tech',
+    subcategory: 'networking',
+    emoji: '🤝',
+    date: '2025-05-21',
+    time: '8:30 AM',
+    location: 'Design District Café',
+    description: 'Early morning networking for professionals in design, marketing, and creative fields.',
+    minAttendees: 10,
+    maxAttendees: 30,
+    attendees: [],
+    price: 25,
+    registrationDeadline: '2025-05-19',
+    photos: []
+  },
+
+  // Workshop Events
+  {
+    id: 'workshop-1',
+    title: 'Digital Photography Basics',
+    category: 'tech',
+    subcategory: 'workshop',
+    emoji: '📸',
+    date: '2025-05-18',
+    time: '2:00 PM',
+    location: 'Photo Studio Downtown',
+    description: 'Learn the fundamentals of digital photography in this hands-on workshop. Bring your own camera!',
+    minAttendees: 5,
+    maxAttendees: 12,
+    attendees: [],
+    price: 75,
+    registrationDeadline: '2025-05-16',
+    photos: []
+  },
+  {
+    id: 'workshop-2',
+    title: 'Sustainable Living Workshop',
+    category: 'tech',
+    subcategory: 'workshop',
+    emoji: '🌱',
+    date: '2025-05-25',
+    time: '11:00 AM',
+    location: 'Community Center',
+    description: 'Learn practical tips and tricks for sustainable living, including composting, recycling, and energy conservation.',
+    minAttendees: 8,
+    maxAttendees: 25,
+    attendees: [],
+    price: 20,
+    registrationDeadline: '2025-05-23',
+    photos: []
+  },
+
+  // Classes Events
+  {
+    id: 'classes-1',
+    title: 'Beginner Watercolor Painting',
+    category: 'arts',
+    subcategory: 'gallery',
+    emoji: '🎨',
+    date: '2025-05-12',
+    time: '6:00 PM',
+    location: 'Art Studio Central',
+    description: 'Start your journey into watercolor painting! All materials provided. No experience necessary.',
+    minAttendees: 4,
+    maxAttendees: 12,
+    attendees: [],
+    price: 45,
+    registrationDeadline: '2025-05-10',
+    photos: []
+  },
+  {
+    id: 'classes-2',
+    title: 'Cooking Masterclass: Asian Fusion',
+    category: 'dining',
+    subcategory: 'restaurant',
+    emoji: '👨‍🍳',
+    date: '2025-05-19',
+    time: '6:30 PM',
+    location: 'Culinary Institute',
+    description: 'Learn to cook delicious Asian fusion dishes with our experienced chef. Ingredients and equipment provided.',
+    minAttendees: 6,
+    maxAttendees: 16,
+    attendees: [],
+    price: 65,
+    registrationDeadline: '2025-05-17',
+    photos: []
+  }
+];
+
+export default sampleEvents; 

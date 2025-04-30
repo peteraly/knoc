@@ -8,6 +8,13 @@ import EventCarousel from './EventCarousel';
 import UserProfile from './UserProfile';
 import Notifications from './Notifications';
 import { ChevronUpIcon, BellIcon, UserCircleIcon, MapIcon, SearchIcon } from '@heroicons/react/24/outline';
+import { startOfDay } from 'date-fns';
+
+const TIMELINE_OPTIONS = {
+  DAY: 'day',
+  WEEK: 'week',
+  MONTH: 'month'
+};
 
 const AppLayout = ({ children }) => {
   const navigate = useNavigate();
@@ -20,6 +27,8 @@ const AppLayout = ({ children }) => {
   const [currentY, setCurrentY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [isMapFullscreen, setIsMapFullscreen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
+  const [timelineView, setTimelineView] = useState(TIMELINE_OPTIONS.DAY);
   const bottomSheetRef = useRef(null);
   const dragThreshold = 50;
   
@@ -89,6 +98,13 @@ const AppLayout = ({ children }) => {
     }
   };
 
+  const handleTimelineChange = (view, date) => {
+    setTimelineView(view);
+    if (date) {
+      setSelectedDate(date);
+    }
+  };
+
   return (
     <div className="h-screen w-screen overflow-hidden bg-gray-50">
       {/* Main Map View */}
@@ -105,6 +121,9 @@ const AppLayout = ({ children }) => {
             setIsBottomSheetOpen(true);
             navigate(`/events/${event.id}`);
           }}
+          timelineView={timelineView}
+          selectedDate={selectedDate}
+          onTimelineChange={handleTimelineChange}
         />
       </motion.div>
 

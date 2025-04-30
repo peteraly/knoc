@@ -4,6 +4,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { EventProvider } from './contexts/EventContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { AdminProvider } from './contexts/AdminContext';
+import { FriendsProvider } from './contexts/FriendsContext';
 import Navigation from './components/Navigation';
 import Dashboard from './components/Dashboard';
 import Events from './components/Events';
@@ -23,27 +24,29 @@ function App() {
         <EventProvider>
           <NotificationProvider>
             <AdminProvider>
-              <div className="min-h-screen bg-gray-50">
-                <Navigation />
-                <main className="pt-16">
-                  <Routes>
-                    {/* Public routes */}
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/register" element={<Register />} />
+              <FriendsProvider>
+                <div className="min-h-screen bg-gray-50">
+                  <Navigation />
+                  <main className="pt-16">
+                    <Routes>
+                      {/* Public routes */}
+                      <Route path="/login" element={<Login />} />
+                      <Route path="/register" element={<Register />} />
 
-                    {/* Protected routes */}
-                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                    <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-                    <Route path="/events" element={<PrivateRoute><Events /></PrivateRoute>} />
-                    <Route path="/my-events" element={<PrivateRoute><MyEvents /></PrivateRoute>} />
-                    <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
+                      {/* Protected routes */}
+                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                      <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+                      <Route path="/events" element={<PrivateRoute><Events /></PrivateRoute>} />
+                      <Route path="/my-events" element={<PrivateRoute><MyEvents /></PrivateRoute>} />
+                      <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
 
-                    {/* Admin routes */}
-                    <Route path="/admin" element={<DevAdminRoute><AdminDashboardHome /></DevAdminRoute>} />
-                    <Route path="/admin/partners" element={<DevAdminRoute><AdminPartners /></DevAdminRoute>} />
-                  </Routes>
-                </main>
-              </div>
+                      {/* Admin routes */}
+                      <Route path="/admin" element={<DevAdminRoute><AdminDashboardHome /></DevAdminRoute>} />
+                      <Route path="/admin/partners" element={<DevAdminRoute><AdminPartners /></DevAdminRoute>} />
+                    </Routes>
+                  </main>
+                </div>
+              </FriendsProvider>
             </AdminProvider>
           </NotificationProvider>
         </EventProvider>

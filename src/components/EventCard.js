@@ -51,6 +51,23 @@ const EventCard = ({ event, onClick }) => {
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState([]);
 
+  // Calculate if we should show the invite button
+  const shouldShowInviteButton = () => {
+    const isAttending = isUserAttending(event.id);
+    const needsMoreAttendees = event.attendees.length < event.minAttendees;
+    const hasDeadline = event.registrationDeadline && new Date(event.registrationDeadline) > new Date();
+    return isAttending && needsMoreAttendees && hasDeadline;
+  };
+
+  // Calculate urgency for invite button styling
+  const isUrgent = () => {
+    if (!event.registrationDeadline) return false;
+    const deadline = new Date(event.registrationDeadline);
+    const now = new Date();
+    const daysUntilDeadline = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24));
+    return daysUntilDeadline <= 3 && event.attendees.length < event.minAttendees;
+  };
+
   const getStatusBadge = () => {
     if (isUserAttending(event.id)) {
       return <span className="absolute top-3 right-3 px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">Attending</span>;
@@ -125,10 +142,11 @@ const EventCard = ({ event, onClick }) => {
         onClick={onClick}
         className="relative bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer overflow-hidden"
       >
-        <div className="flex">
-          {/* Photo Gallery Section */}
-          <div className="w-1/3 min-w-[200px] relative">
-            <div className="h-full">
+        {/* Mobile-optimized flex container */}
+        <div className="flex flex-col md:flex-row">
+          {/* Photo Gallery Section - Full width on mobile */}
+          <div className="w-full md:w-1/3 md:min-w-[200px] relative">
+            <div className="aspect-video md:h-full">
               {sampleEventPhotos.length > 0 && (
                 <div 
                   className="h-full relative"
@@ -137,7 +155,7 @@ const EventCard = ({ event, onClick }) => {
                   <img
                     src={sampleEventPhotos[0].url}
                     alt={sampleEventPhotos[0].alt}
-                    className="w-full h-full object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    className="w-full h-full object-cover rounded-t-lg md:rounded-l-lg md:rounded-t-none cursor-pointer hover:opacity-90 transition-opacity"
                   />
                   {sampleEventPhotos.length > 1 && (
                     <div className="absolute bottom-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-full">
@@ -152,34 +170,34 @@ const EventCard = ({ event, onClick }) => {
 
           {/* Event Details Section */}
           <div className="flex-1 p-4">
-            <div className="flex justify-between items-start">
-              <div className="flex items-center">
-                <span className="text-2xl mr-2">{getCategoryEmoji()}</span>
-                <h3 className="text-lg font-semibold text-gray-900">{event.title}</h3>
+            <div className="flex justify-between items-start flex-wrap gap-2">
+              <div className="flex items-center flex-wrap gap-2">
+                <span className="text-2xl">{getCategoryEmoji()}</span>
+                <h3 className="text-lg font-semibold text-gray-900 break-words">{event.title}</h3>
               </div>
               {getStatusBadge()}
             </div>
             
             <div className="space-y-2 mt-2">
               <div className="flex items-center text-gray-600">
-                <CalendarIcon className="h-4 w-4 mr-2" />
-                <span className="text-sm">{new Date(event.date).toLocaleDateString()}</span>
+                <CalendarIcon className="h-4 w-4 min-w-[1rem] mr-2" />
+                <span className="text-sm break-words">{new Date(event.date).toLocaleDateString()}</span>
               </div>
               
               <div className="flex items-center text-gray-600">
-                <ClockIcon className="h-4 w-4 mr-2" />
-                <span className="text-sm">{event.time}</span>
+                <ClockIcon className="h-4 w-4 min-w-[1rem] mr-2" />
+                <span className="text-sm break-words">{event.time}</span>
               </div>
               
               <div className="flex items-center text-gray-600">
-                <MapPinIcon className="h-4 w-4 mr-2" />
-                <span className="text-sm truncate">{event.location}</span>
+                <MapPinIcon className="h-4 w-4 min-w-[1rem] mr-2" />
+                <span className="text-sm break-words">{event.location}</span>
               </div>
 
-              <div className="flex items-center justify-between mt-3">
-                <div className="flex items-center space-x-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-3">
+                <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center text-gray-600">
-                    <UserGroupIcon className="h-4 w-4 mr-2" />
+                    <UserGroupIcon className="h-4 w-4 min-w-[1rem] mr-2" />
                     <span className="text-sm">{event.attendees.length} / {event.maxAttendees}</span>
                   </div>
 
@@ -203,29 +221,41 @@ const EventCard = ({ event, onClick }) => {
                   )}
                 </div>
 
-                {/* Invite button */}
-                <button
-                  onClick={handleInviteClick}
-                  className="flex items-center space-x-1 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors duration-200"
-                  title="Invite friends to this event"
-                >
-                  <UserPlusIcon className="h-4 w-4" />
-                  <span className="text-sm font-medium">Invite</span>
-                </button>
+                {/* Invite button - full width on mobile */}
+                {shouldShowInviteButton() && (
+                  <button
+                    onClick={handleInviteClick}
+                    className={`w-full sm:w-auto flex items-center justify-center space-x-1 px-3 py-1.5 rounded-full transition-colors duration-200 ${
+                      isUrgent() 
+                        ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                        : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                    }`}
+                    title={`${event.minAttendees - event.attendees.length} more people needed${
+                      event.registrationDeadline 
+                        ? ` before ${new Date(event.registrationDeadline).toLocaleDateString()}`
+                        : ''
+                    }`}
+                  >
+                    <UserPlusIcon className="h-4 w-4" />
+                    <span className="text-sm font-medium">
+                      {isUrgent() ? 'Invite Now!' : 'Invite'}
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Category Filter Modal */}
+      {/* Mobile-optimized modals */}
       {showCategoryFilter && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-end md:items-center justify-center z-50"
           onClick={() => setShowCategoryFilter(false)}
         >
           <div 
-            className="bg-white rounded-lg p-6 max-w-md w-full"
+            className="bg-white rounded-t-lg md:rounded-lg p-4 md:p-6 w-full md:max-w-md max-h-[90vh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-4">
@@ -277,32 +307,32 @@ const EventCard = ({ event, onClick }) => {
         </div>
       )}
 
-      {/* Photo Modal */}
+      {/* Photo Modal - Full screen on mobile */}
       {showPhotoModal && selectedPhoto && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+          className="fixed inset-0 bg-black flex items-center justify-center z-50"
           onClick={() => setShowPhotoModal(false)}
         >
-          <div className="relative max-w-4xl w-full mx-4" onClick={e => e.stopPropagation()}>
+          <div className="relative w-full h-full md:h-auto md:max-w-4xl" onClick={e => e.stopPropagation()}>
             <button
               onClick={() => setShowPhotoModal(false)}
-              className="absolute top-4 right-4 text-white hover:text-gray-300"
+              className="absolute top-4 right-4 text-white hover:text-gray-300 z-10"
             >
               <XMarkIcon className="h-6 w-6" />
             </button>
             <img
               src={selectedPhoto.url}
               alt={selectedPhoto.alt}
-              className="w-full h-auto rounded-lg"
+              className="w-full h-full object-contain"
             />
           </div>
         </div>
       )}
 
-      {/* Enhanced Invite Modal */}
+      {/* Enhanced Invite Modal - Bottom sheet on mobile */}
       {showInviteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowInviteModal(false)}>
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end md:items-center justify-center z-50" onClick={() => setShowInviteModal(false)}>
+          <div className="bg-white rounded-t-lg md:rounded-lg p-4 md:p-6 w-full md:max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold">Invite to {event.title}</h3>
               <button onClick={() => setShowInviteModal(false)} className="text-gray-500 hover:text-gray-700">

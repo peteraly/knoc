@@ -1,29 +1,108 @@
-import React, { useState, useEffect, useRef } from 'react';
-import mapboxgl from '../utils/mapbox';
+import React, { useState, useEffect } from 'react';
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 
-// San Francisco Bay Area coordinates and bounding box
-const SF_COORDINATES = [-122.4194, 37.7749];
-const SF_BOUNDS = [-122.75, 37.15, -121.75, 38.15]; // [west, south, east, north]
-
-const LocationAutocomplete = ({ value, onChange, onCoordinatesChange }) => {
+const LocationAutocomplete = ({ value, onChange, onCoordinatesChange, onNeighborhoodChange, required }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const debounceTimer = useRef(null);
-  const wrapperRef = useRef(null);
+  const [selectedAddress, setSelectedAddress] = useState(null);
 
-  useEffect(() => {
-    // Add click outside listener to close suggestions
-    const handleClickOutside = (event) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
-        setShowSuggestions(false);
+  // Define SF neighborhoods with their approximate boundaries
+  const neighborhoods = {
+    'downtown': {
+      bounds: {
+        north: 37.789,
+        south: 37.781,
+        east: -122.405,
+        west: -122.419
       }
-    };
+    },
+    'mission': {
+      bounds: {
+        north: 37.768,
+        south: 37.748,
+        east: -122.407,
+        west: -122.422
+      }
+    },
+    'haight': {
+      bounds: {
+        north: 37.775,
+        south: 37.765,
+        east: -122.435,
+        west: -122.454
+      }
+    },
+    'castro': {
+      bounds: {
+        north: 37.765,
+        south: 37.755,
+        east: -122.425,
+        west: -122.437
+      }
+    },
+    'soma': {
+      bounds: {
+        north: 37.789,
+        south: 37.775,
+        east: -122.386,
+        west: -122.405
+      }
+    },
+    'marina': {
+      bounds: {
+        north: 37.807,
+        south: 37.797,
+        east: -122.426,
+        west: -122.447
+      }
+    },
+    'richmond': {
+      bounds: {
+        north: 37.789,
+        south: 37.771,
+        east: -122.471,
+        west: -122.511
+      }
+    },
+    'sunset': {
+      bounds: {
+        north: 37.771,
+        south: 37.747,
+        east: -122.471,
+        west: -122.511
+      }
+    },
+    'nob-hill': {
+      bounds: {
+        north: 37.794,
+        south: 37.787,
+        east: -122.410,
+        west: -122.419
+      }
+    },
+    'north-beach': {
+      bounds: {
+        north: 37.807,
+        south: 37.796,
+        east: -122.400,
+        west: -122.414
+      }
+    }
+  };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  // Function to determine neighborhood based on coordinates
+  const determineNeighborhood = (lat, lng) => {
+    for (const [neighborhood, data] of Object.entries(neighborhoods)) {
+      const { bounds } = data;
+      if (lat <= bounds.north && lat >= bounds.south && 
+          lng >= bounds.west && lng <= bounds.east) {
+        return neighborhood;
+      }
+    }
+    return 'other';
+  };
 
+  // Function to fetch address suggestions
   const fetchSuggestions = async (query) => {
     if (!query) {
       setSuggestions([]);
@@ -32,112 +111,95 @@ const LocationAutocomplete = ({ value, onChange, onCoordinatesChange }) => {
 
     setIsLoading(true);
     try {
-      // Focus search on SF Bay Area by using proximity and bounding box
+      // Add "San Francisco" to the search query to limit results to SF
       const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?` +
-        `access_token=${mapboxgl.accessToken}&` +
-        'country=us&' +
-        'types=place,address,poi,neighborhood,locality&' +
-        `proximity=${SF_COORDINATES.join(',')}&` + // Center on SF
-        `bbox=${SF_BOUNDS.join(',')}&` + // SF Bay Area bounding box
-        'limit=5'
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query + ' San Francisco')}.json?` +
+        `access_token=${process.env.REACT_APP_MAPBOX_TOKEN}&` +
+        'bbox=-122.517,37.707,-122.355,37.833' // SF bounding box
       );
-
-      if (!response.ok) throw new Error('Geocoding request failed');
-
+      
       const data = await response.json();
-      setSuggestions(data.features.map(feature => ({
-        ...feature,
-        // Format the place name to be more readable
-        display_name: formatPlaceName(feature)
-      })));
+      
+      // Filter and format suggestions
+      const formattedSuggestions = data.features.map(feature => ({
+        address: feature.place_name,
+        coordinates: feature.center, // [longitude, latitude]
+        neighborhood: determineNeighborhood(feature.center[1], feature.center[0])
+      }));
+      
+      setSuggestions(formattedSuggestions);
     } catch (error) {
-      console.error('Error fetching location suggestions:', error);
-      setSuggestions([]);
-    } finally {
-      setIsLoading(false);
+      console.error('Error fetching suggestions:', error);
     }
+    setIsLoading(false);
   };
 
-  // Format place names to be more readable
-  const formatPlaceName = (feature) => {
-    const parts = [];
-    
-    // Add the main text
-    if (feature.text) {
-      parts.push(feature.text);
-    }
-
-    // Add relevant context
-    if (feature.context) {
-      const neighborhood = feature.context.find(c => c.id.startsWith('neighborhood'));
-      const locality = feature.context.find(c => c.id.startsWith('locality'));
-      const place = feature.context.find(c => c.id.startsWith('place'));
-      
-      if (neighborhood) parts.push(neighborhood.text);
-      if (locality) parts.push(locality.text);
-      if (place && place.text !== 'Washington') parts.push(place.text);
-      
-      // Always add DC at the end if we're in DC
-      const region = feature.context.find(c => c.id.startsWith('region'));
-      if (region && region.text === 'District of Columbia') {
-        parts.push('DC');
-      }
-    }
-
-    return parts.join(', ');
-  };
-
-  const handleInputChange = (e) => {
-    const newValue = e.target.value;
-    onChange(newValue);
-    setShowSuggestions(true);
-
-    // Debounce API calls
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-    debounceTimer.current = setTimeout(() => {
-      fetchSuggestions(newValue);
+  // Debounce the fetch suggestions
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchSuggestions(value);
     }, 300);
-  };
 
-  const handleSuggestionClick = (suggestion) => {
-    onChange(suggestion.display_name);
-    onCoordinatesChange(suggestion.center);
-    setShowSuggestions(false);
+    return () => clearTimeout(timer);
+  }, [value]);
+
+  const handleSelectSuggestion = (suggestion) => {
+    setSelectedAddress(suggestion);
+    onChange(suggestion.address);
+    onCoordinatesChange({
+      lat: suggestion.coordinates[1],
+      lng: suggestion.coordinates[0]
+    });
+    onNeighborhoodChange(suggestion.neighborhood);
     setSuggestions([]);
   };
 
   return (
-    <div ref={wrapperRef} className="relative w-full">
-      <input
-        type="text"
-        value={value}
-        onChange={handleInputChange}
-        onFocus={() => value && fetchSuggestions(value)}
-        placeholder="Search for a place or address"
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
-      
+    <div className="relative">
+      <div className="relative">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required={required}
+          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Enter address in San Francisco"
+        />
+        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+      </div>
+
+      {/* Loading indicator */}
       {isLoading && (
-        <div className="absolute right-3 top-2.5">
-          <div className="animate-spin h-5 w-5 border-2 border-blue-500 rounded-full border-t-transparent"></div>
+        <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md mt-1 p-2 text-gray-500">
+          Loading suggestions...
         </div>
       )}
 
-      {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-          {suggestions.map((suggestion) => (
+      {/* Suggestions dropdown */}
+      {suggestions.length > 0 && (
+        <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-md mt-1 max-h-60 overflow-auto">
+          {suggestions.map((suggestion, index) => (
             <button
-              key={suggestion.id}
-              onClick={() => handleSuggestionClick(suggestion)}
-              className="w-full px-4 py-2 text-left hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+              key={index}
+              className="w-full text-left px-4 py-2 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+              onClick={() => handleSelectSuggestion(suggestion)}
             >
-              <div className="font-medium">{suggestion.text}</div>
-              <div className="text-sm text-gray-500">{suggestion.display_name}</div>
+              <div className="font-medium">{suggestion.address}</div>
+              <div className="text-sm text-gray-500">
+                {suggestion.neighborhood.charAt(0).toUpperCase() + suggestion.neighborhood.slice(1).replace('-', ' ')}
+              </div>
             </button>
           ))}
+        </div>
+      )}
+
+      {/* Selected address indicator */}
+      {selectedAddress && (
+        <div className="mt-2 text-sm">
+          <span className="font-medium text-gray-700">Selected neighborhood: </span>
+          <span className="text-gray-600">
+            {selectedAddress.neighborhood.charAt(0).toUpperCase() + selectedAddress.neighborhood.slice(1).replace('-', ' ')}
+          </span>
         </div>
       )}
     </div>

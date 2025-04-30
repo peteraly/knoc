@@ -1,7 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
-import Map, { Marker, Popup, NavigationControl } from 'react-map-gl';
+import React, { useState, useEffect, useCallback } from 'react';
+import Map, { Marker, Popup } from 'react-map-gl';
+import LocationSearch from './LocationSearch';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { format, addDays, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { useEvents } from '../contexts/EventContext';
+import { classNames } from '../utils/classNames';
 
 // Get the Mapbox token from environment variables
 const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
@@ -9,40 +12,79 @@ const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 // Default coordinates (San Francisco)
 const DEFAULT_COORDINATES = [-122.4194, 37.7749];
 
-// Timeline options
-const TIMELINE_OPTIONS = {
-  DAY: 'day',
-  WEEK: 'week',
-  MONTH: 'month'
-};
-
-const MapView = ({ events, selectedEvent, onEventSelect }) => {
+const MapView = ({ selectedCategories = [], onEventSelect, timelineView, selectedDate, onTimelineChange }) => {
+  const { events, eventCategories } = useEvents();
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [viewport, setViewport] = useState({
-    latitude: DEFAULT_COORDINATES[1],
-    longitude: DEFAULT_COORDINATES[0],
-    zoom: 11,
-    bearing: 0,
-    pitch: 0
+    latitude: 37.7749,
+    longitude: -122.4194,
+    zoom: 12
   });
   
   const [popupInfo, setPopupInfo] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
-  const [timelineView, setTimelineView] = useState(TIMELINE_OPTIONS.DAY);
+
+  // Filter events based on selected categories
+  const filteredEvents = events.filter(event => 
+    selectedCategories.length === 0 || selectedCategories.includes(event.category)
+  );
+
+  // Get category info for an event
+  const getCategoryInfo = (event) => {
+    const category = eventCategories?.find(c => c.id === event.category);
+    return {
+      emoji: category?.emoji || '📍',
+      color: category?.color || 'rgb(244, 63, 94)', // rose-500
+      hoverColor: category?.hoverColor || 'rgb(225, 29, 72)' // rose-600
+    };
+  };
+
+  // Handle location search selection
+  const handleLocationSelect = useCallback((location) => {
+    setViewport({
+      latitude: location.coordinates.lat,
+      longitude: location.coordinates.lng,
+      zoom: 14,
+      transitionDuration: 1000
+    });
+  }, []);
+
+  // Filter events based on map bounds
+  const filterEventsByBounds = useCallback((bounds) => {
+    if (!bounds) return events;
+    return events.filter(event => {
+      const lat = event.coordinates.lat;
+      const lng = event.coordinates.lng;
+      return (
+        lat >= bounds.getSouth() &&
+        lat <= bounds.getNorth() &&
+        lng >= bounds.getWest() &&
+        lng <= bounds.getEast()
+      );
+    });
+  }, [events]);
+
+  // Update events when map moves
+  const handleMapMove = useCallback(({ viewState, target }) => {
+    setViewport(viewState);
+    const bounds = target.getBounds();
+    const visibleEvents = filterEventsByBounds(bounds);
+    // You can pass these visible events to a parent component if needed
+  }, [filterEventsByBounds]);
 
   // Filter events based on selected timeline
   const getFilteredEvents = () => {
     let start, end;
 
     switch (timelineView) {
-      case TIMELINE_OPTIONS.WEEK:
+      case 'week':
         start = startOfWeek(selectedDate);
         end = endOfWeek(selectedDate);
         break;
-      case TIMELINE_OPTIONS.MONTH:
+      case 'month':
         start = startOfMonth(selectedDate);
         end = endOfMonth(selectedDate);
         break;
-      default: // DAY
+      default: // day
         start = startOfDay(selectedDate);
         end = endOfDay(selectedDate);
     }
@@ -55,89 +97,105 @@ const MapView = ({ events, selectedEvent, onEventSelect }) => {
 
   // Format date range for display
   const getDateRangeText = () => {
-    switch (timelineView) {
-      case TIMELINE_OPTIONS.WEEK:
-        const weekStart = startOfWeek(selectedDate);
-        const weekEnd = endOfWeek(selectedDate);
-        return `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d')}`;
-      case TIMELINE_OPTIONS.MONTH:
-        return format(selectedDate, 'MMMM yyyy');
-      default:
-        return format(selectedDate, 'EEEE, MMMM d');
+    try {
+      // Ensure selectedDate is a valid Date object
+      const date = selectedDate instanceof Date ? selectedDate : new Date(selectedDate);
+      if (isNaN(date.getTime())) {
+        return 'Invalid date';
+      }
+
+      switch (timelineView) {
+        case 'week':
+          const weekStart = startOfWeek(date);
+          const weekEnd = endOfWeek(date);
+          return `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d')}`;
+        case 'month':
+          return format(date, 'MMMM yyyy');
+        default:
+          return format(date, 'EEEE, MMMM d');
+      }
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
     }
   };
 
-  // Handle marker click
   const handleMarkerClick = (event) => {
-    setPopupInfo(event);
-    onEventSelect(event);
+    setSelectedEvent(event);
+    if (onEventSelect) {
+      onEventSelect(event);
+    }
   };
 
   return (
-    <div className="absolute inset-0">
+    <div className="relative w-full h-full">
+      <div className="absolute top-4 left-4 right-4 z-10">
+        <LocationSearch onLocationSelect={handleLocationSelect} />
+      </div>
+
       <Map
         {...viewport}
-        style={{ width: '100%', height: '100%' }}
-        mapStyle="mapbox://styles/mapbox/streets-v12"
-        onMove={evt => setViewport(evt.viewport)}
-        mapboxAccessToken={MAPBOX_TOKEN}
+        onMove={handleMapMove}
+        mapStyle="mapbox://styles/mapbox/streets-v11"
+        mapboxAccessToken={process.env.REACT_APP_MAPBOX_TOKEN}
       >
-        <NavigationControl position="top-right" />
-
-        {getFilteredEvents().map((event) => (
-          <Marker
-            key={event.id}
-            latitude={event.coordinates[1]}
-            longitude={event.coordinates[0]}
-            anchor="bottom"
-            onClick={e => {
-              e.originalEvent.stopPropagation();
-              handleMarkerClick(event);
-            }}
-          >
-            <div
-              className={`
-                flex items-center justify-center transition-all duration-300 transform
-                ${selectedEvent?.id === event.id ? 
-                  'scale-125 -translate-y-1 z-10' : 
-                  'hover:scale-110'
-                }
-              `}
+        {filteredEvents.map(event => {
+          const isSelected = selectedEvent?.id === event.id;
+          const categoryInfo = getCategoryInfo(event);
+          
+          return (
+            <Marker
+              key={event.id}
+              latitude={event.coordinates.lat}
+              longitude={event.coordinates.lng}
+              anchor="bottom"
+              onClick={(e) => {
+                e.originalEvent.stopPropagation();
+                handleMarkerClick(event);
+              }}
             >
               <div
-                className={`
-                  w-10 h-10 rounded-full flex items-center justify-center
-                  border-2 shadow-lg cursor-pointer
-                  ${selectedEvent?.id === event.id ? 
-                    'border-white bg-rose-500 shadow-rose-200' : 
-                    'border-white bg-rose-400 hover:bg-rose-500'
-                  }
-                `}
+                className={classNames(
+                  'relative flex items-center justify-center',
+                  'w-10 h-10 rounded-full border-2 border-white shadow-lg',
+                  'transform transition-all duration-300',
+                  isSelected
+                    ? 'scale-125 -translate-y-1'
+                    : 'hover:scale-110',
+                )}
+                style={{
+                  backgroundColor: isSelected ? categoryInfo.hoverColor : categoryInfo.color
+                }}
               >
-                <span className="text-xl">{event.emoji}</span>
+                <span className="text-lg">{categoryInfo.emoji}</span>
+                {isSelected && (
+                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 
+                                w-3 h-3 rotate-45 bg-inherit" />
+                )}
               </div>
-              {selectedEvent?.id === event.id && (
-                <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-rose-500 rotate-45" />
-              )}
-            </div>
-          </Marker>
-        ))}
+            </Marker>
+          );
+        })}
 
-        {popupInfo && (
+        {selectedEvent && (
           <Popup
+            latitude={selectedEvent.coordinates.lat}
+            longitude={selectedEvent.coordinates.lng}
             anchor="bottom"
-            latitude={popupInfo.coordinates[1]}
-            longitude={popupInfo.coordinates[0]}
-            onClose={() => setPopupInfo(null)}
-            offset={25}
+            onClose={() => setSelectedEvent(null)}
+            closeButton={true}
+            closeOnClick={false}
+            className="rounded-lg shadow-lg"
           >
-            <div className="p-3">
-              <h3 className="text-lg font-semibold mb-2">{popupInfo.title}</h3>
-              <p className="text-sm text-gray-600 mb-2">{popupInfo.description}</p>
-              <p className="text-sm text-gray-500">
-                {format(new Date(popupInfo.date), 'MMM d')} at {popupInfo.time}
-              </p>
-              <p className="text-sm text-gray-500">{popupInfo.location}</p>
+            <div className="p-2">
+              <h3 className="text-lg font-semibold">
+                {getCategoryInfo(selectedEvent).emoji} {selectedEvent.title}
+              </h3>
+              <p className="text-sm text-gray-600">{selectedEvent.description}</p>
+              <div className="mt-2 text-sm text-gray-500">
+                <p>{selectedEvent.date} at {selectedEvent.time}</p>
+                <p>{selectedEvent.location}</p>
+              </div>
             </div>
           </Popup>
         )}
@@ -146,17 +204,17 @@ const MapView = ({ events, selectedEvent, onEventSelect }) => {
       {/* Timeline controls */}
       <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-white px-6 py-3 rounded-full shadow-lg z-10 flex items-center space-x-4">
         <button
-          onClick={() => setSelectedDate(prev => addDays(prev, -1))}
+          onClick={() => onTimelineChange(timelineView, addDays(selectedDate, -1))}
           className="text-gray-600 hover:text-gray-900"
         >
           ←
         </button>
         
         <div className="flex items-center space-x-2">
-          {Object.values(TIMELINE_OPTIONS).map(option => (
+          {['day', 'week', 'month'].map(option => (
             <button
               key={option}
-              onClick={() => setTimelineView(option)}
+              onClick={() => onTimelineChange(option, selectedDate)}
               className={`
                 px-3 py-1 rounded-full text-sm
                 ${timelineView === option
@@ -175,7 +233,7 @@ const MapView = ({ events, selectedEvent, onEventSelect }) => {
         </span>
 
         <button
-          onClick={() => setSelectedDate(prev => addDays(prev, 1))}
+          onClick={() => onTimelineChange(timelineView, addDays(selectedDate, 1))}
           className="text-gray-600 hover:text-gray-900"
         >
           →
@@ -185,7 +243,7 @@ const MapView = ({ events, selectedEvent, onEventSelect }) => {
       {/* Event count badge */}
       <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-md z-10">
         <span className="text-sm text-gray-600">
-          {getFilteredEvents().length} events {timelineView === TIMELINE_OPTIONS.DAY ? 'today' : `this ${timelineView}`}
+          {getFilteredEvents().length} events {timelineView === 'day' ? 'today' : `this ${timelineView}`}
         </span>
       </div>
     </div>

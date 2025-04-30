@@ -34,6 +34,7 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
   const [time, setTime] = useState(initialData?.time || '');
   const [location, setLocation] = useState(initialData?.location || '');
   const [coordinates, setCoordinates] = useState(initialData?.coordinates || null);
+  const [neighborhood, setNeighborhood] = useState(initialData?.neighborhood || '');
   const [category, setCategory] = useState(initialData?.category || 'dining');
   const [subcategory, setSubcategory] = useState(initialData?.subcategory || '');
   const [emoji, setEmoji] = useState(initialData?.emoji || '🍽️');
@@ -96,6 +97,10 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
       alert('Please select a location from the suggestions');
       return;
     }
+    if (!neighborhood) {
+      alert('Please select a valid San Francisco address to determine the neighborhood');
+      return;
+    }
     
     // Build the event data object
     const eventData = {
@@ -105,6 +110,7 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
       time,
       location,
       coordinates,
+      neighborhood,
       category,
       subcategory,
       emoji,
@@ -178,6 +184,21 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
     return selectedCategory?.subcategories || [];
   };
 
+  // Add neighborhoods array after categories (if not already imported from a shared constants file)
+  const neighborhoods = [
+    { id: 'downtown', name: 'Downtown', emoji: '🌆' },
+    { id: 'mission', name: 'Mission District', emoji: '🎨' },
+    { id: 'haight', name: 'Haight-Ashbury', emoji: '🌺' },
+    { id: 'castro', name: 'Castro', emoji: '🌈' },
+    { id: 'soma', name: 'SoMa', emoji: '🏢' },
+    { id: 'marina', name: 'Marina', emoji: '⛵' },
+    { id: 'richmond', name: 'Richmond', emoji: '🌊' },
+    { id: 'sunset', name: 'Sunset', emoji: '🌅' },
+    { id: 'nob-hill', name: 'Nob Hill', emoji: '⛰️' },
+    { id: 'north-beach', name: 'North Beach', emoji: '🍝' },
+    { id: 'other', name: 'Other Areas', emoji: '📌' }
+  ];
+
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
       {/* Basic Info Section */}
@@ -250,6 +271,7 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
                   value={location}
                   onChange={setLocation}
                   onCoordinatesChange={setCoordinates}
+                  onNeighborhoodChange={setNeighborhood}
                   required
                 />
               </div>
