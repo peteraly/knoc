@@ -21,7 +21,7 @@ import EventForm from './EventForm';
 
 export default function EventDetails({ event, onClose, onJoinEvent, openInviteDirectly }) {
   const [isLoading, setIsLoading] = useState(false);
-  const [showInviteModal, setShowInviteModal] = useState(openInviteDirectly);
+  const [showInviteModal, setShowInviteModal] = useState(openInviteDirectly || false);
   const [showEditForm, setShowEditForm] = useState(false);
   const [emailInput, setEmailInput] = useState('');
   const [isCopied, setIsCopied] = useState(false);
@@ -29,10 +29,7 @@ export default function EventDetails({ event, onClose, onJoinEvent, openInviteDi
   const { friends } = useFriends();
   
   useEffect(() => {
-    // Open invite modal directly if requested
-    if (openInviteDirectly) {
-      setShowInviteModal(true);
-    }
+    setShowInviteModal(openInviteDirectly);
   }, [openInviteDirectly]);
 
   const handleEditSubmit = async (updatedEventData) => {
@@ -131,7 +128,7 @@ export default function EventDetails({ event, onClose, onJoinEvent, openInviteDi
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
-      <div className="absolute right-0 top-0 h-full w-full max-w-2xl bg-white shadow-xl">
+      <div className="absolute right-0 top-0 h-full w-full max-w-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between border-b p-4">
             <h2 className="text-xl font-semibold">{event.title}</h2>
@@ -144,12 +141,12 @@ export default function EventDetails({ event, onClose, onJoinEvent, openInviteDi
                   Edit Event
                 </button>
               )}
-              {canEditEvent(event) && !isPastDeadline && (
+              {(canEditEvent(event) || isAttending) && (
                 <button
                   onClick={() => setShowInviteModal(true)}
                   className="rounded-md bg-green-100 px-3 py-1.5 text-sm font-medium text-green-600 hover:bg-green-200 inline-flex items-center"
                 >
-                  <ShareIcon className="w-4 h-4 mr-1.5" />
+                  <UserPlusIcon className="w-4 h-4 mr-1.5" />
                   Invite
                 </button>
               )}
@@ -315,92 +312,112 @@ export default function EventDetails({ event, onClose, onJoinEvent, openInviteDi
 
           {/* Invite Modal */}
           {showInviteModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg w-full max-w-md p-6 relative">
-                <button
-                  onClick={() => setShowInviteModal(false)}
-                  className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full"
+            <div 
+              className="fixed inset-0 z-[60] overflow-y-auto"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setShowInviteModal(false);
+                  setEmailInput('');
+                }
+              }}
+            >
+              <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div 
+                  className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <XMarkIcon className="w-5 h-5 text-gray-500" />
-                </button>
+                  <div className="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+                    <div className="sm:flex sm:items-start">
+                      <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left w-full">
+                        <div className="flex justify-between items-center mb-4">
+                          <h3 className="text-lg font-semibold">Invite to Event</h3>
+                          <button
+                            onClick={() => {
+                              setShowInviteModal(false);
+                              setEmailInput('');
+                            }}
+                            className="text-gray-400 hover:text-gray-500"
+                          >
+                            <XMarkIcon className="h-6 w-6" />
+                          </button>
+                        </div>
 
-                <h3 className="text-lg font-semibold mb-4">Invite People to {event.title}</h3>
-                
-                {peopleNeeded > 0 && (
-                  <div className="mb-4 text-sm bg-green-50 text-green-700 p-3 rounded-md">
-                    <UserGroupIcon className="w-4 h-4 inline mr-2" />
-                    This event needs {peopleNeeded} more {peopleNeeded === 1 ? 'person' : 'people'} to happen
-                  </div>
-                )}
+                        {/* Event Info */}
+                        <div className="mb-6">
+                          <h4 className="font-medium">{event.title}</h4>
+                          <p className="text-sm text-gray-500 mt-1">
+                            {peopleNeeded > 0 
+                              ? `${peopleNeeded} more ${peopleNeeded === 1 ? 'person' : 'people'} needed`
+                              : 'Event is ready to go!'
+                            }
+                          </p>
+                        </div>
 
-                {event.registrationDeadline && (
-                  <div className="mb-4 text-sm text-gray-600">
-                    <ClockIcon className="w-4 h-4 inline mr-2" />
-                    Registration deadline: {format(new Date(event.registrationDeadline), 'MMM d, yyyy')}
-                  </div>
-                )}
+                        {/* Share Link */}
+                        <div className="mb-6">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Share Link
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={`${window.location.origin}/event/${event.id}`}
+                              readOnly
+                              className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                            <button
+                              onClick={handleCopyLink}
+                              className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                              {isCopied ? 'Copied!' : 'Copy'}
+                            </button>
+                          </div>
+                        </div>
 
-                {/* Share Event Link */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Share Event Link
-                  </label>
-                  <div className="flex items-center">
-                    <input
-                      type="text"
-                      readOnly
-                      value={`${window.location.origin}/event/${event.id}`}
-                      className="flex-1 block w-full rounded-l-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                    />
-                    <button
-                      onClick={handleCopyLink}
-                      className="inline-flex items-center px-4 py-2 border border-l-0 border-gray-300 rounded-r-md bg-gray-50 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                    >
-                      {isCopied ? 'Copied!' : 'Copy'}
-                    </button>
-                  </div>
-                </div>
+                        {/* Email Invite */}
+                        <form onSubmit={handleEmailInvite} className="mb-6">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Invite by Email
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="email"
+                              value={emailInput}
+                              onChange={(e) => setEmailInput(e.target.value)}
+                              placeholder="Enter email address"
+                              className="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                            />
+                            <button
+                              type="submit"
+                              className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                            >
+                              Send
+                            </button>
+                          </div>
+                        </form>
 
-                {/* Send Email Invite */}
-                <form onSubmit={handleEmailInvite} className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Send Email Invite
-                  </label>
-                  <div className="flex items-center">
-                    <input
-                      type="email"
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      placeholder="Enter email address"
-                      className="flex-1 block w-full rounded-l-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                    />
-                    <button
-                      type="submit"
-                      className="inline-flex items-center px-4 py-2 border border-l-0 border-transparent rounded-r-md bg-blue-600 text-sm font-medium text-white hover:bg-blue-700"
-                    >
-                      Send
-                    </button>
-                  </div>
-                </form>
-
-                {/* Share on Social Media */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Share on Social Media
-                  </label>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={handleShareTwitter}
-                      className="flex-1 inline-flex justify-center items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm bg-[#1DA1F2] text-sm font-medium text-white hover:bg-[#1a8cd8]"
-                    >
-                      Share on Twitter
-                    </button>
-                    <button
-                      onClick={handleShareFacebook}
-                      className="flex-1 inline-flex justify-center items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm bg-[#4267B2] text-sm font-medium text-white hover:bg-[#365899]"
-                    >
-                      Share on Facebook
-                    </button>
+                        {/* Social Share */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Share on Social Media
+                          </label>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={handleShareTwitter}
+                              className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                              Twitter
+                            </button>
+                            <button
+                              onClick={handleShareFacebook}
+                              className="flex-1 inline-flex justify-center items-center px-3 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                            >
+                              Facebook
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

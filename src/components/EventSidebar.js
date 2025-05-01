@@ -54,10 +54,11 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
   ];
 
   const filterOptions = [
-    { id: 'all', name: 'All' },
-    { id: 'available-seats', name: 'Available Seats' },
-    { id: 'upcoming', name: 'Upcoming' },
-    { id: 'popular', name: 'Popular' }
+    { id: 'all', name: 'All', icon: '✨' },
+    { id: 'available-seats', name: 'Available Seats', icon: '💺' },
+    { id: 'upcoming', name: 'Upcoming', icon: '📅' },
+    { id: 'popular', name: 'Popular', icon: '🔥' },
+    { id: 'vip', name: 'VIP Only', icon: '👑' }
   ];
 
   // Add available seats options
@@ -175,6 +176,11 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
 
     // Apply additional filters and sorting
     switch (selectedFilter) {
+      case 'vip':
+        filtered = filtered.filter(event => 
+          event.isVIP === true || event.category === 'vip' || event.eventType === 'vip'
+        );
+        break;
       case 'available-seats':
         filtered = filtered.filter(event => {
           const availableSeats = event.maxAttendees - event.currentAttendees;
@@ -290,12 +296,25 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
   const getAvailableSeats = (event) => event.maxAttendees - event.currentAttendees;
 
   const handleSelectEvent = (event, openInvite = false) => {
-    selectEvent(event);
-    setSelectedEventWithInvite(openInvite);
+    console.log('handleSelectEvent called with:', {
+      title: event?.title,
+      id: event?.id,
+      openInvite
+    });
+    
+    if (event) {
+      // First select the event
+      selectEvent(event);
+      // Then set the invite state if needed
+      setSelectedEventWithInvite(openInvite);
+    }
   };
 
   const handleCloseDetails = () => {
+    console.log('handleCloseDetails called');
+    // Reset both states when closing
     selectEvent(null);
+    setSelectedEventWithInvite(false);
   };
 
   const handleJoinClick = (event) => {
@@ -417,7 +436,8 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
 
         {/* Filters Section */}
         <div className="px-4 py-3 border-b border-gray-200">
-          <div className="flex space-x-2 overflow-x-auto pb-2">
+          <h3 className="text-sm font-medium text-gray-700 mb-2">Filter Events</h3>
+          <div className="flex flex-wrap gap-2">
             {filterOptions.map(filter => (
               <button
                 key={filter.id}
@@ -428,16 +448,34 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                   }
                 }}
                 className={classNames(
-                  'px-3 py-1 text-sm font-medium rounded-full whitespace-nowrap',
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
                   selectedFilter === filter.id
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                    ? filter.id === 'vip'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
                 )}
               >
-                {filter.name}
+                <span>{filter.icon}</span>
+                <span>{filter.name}</span>
+                {selectedFilter === filter.id && filter.id === 'vip' && (
+                  <div className="ml-1 px-1.5 py-0.5 text-xs bg-purple-200 text-purple-800 rounded">
+                    Active
+                  </div>
+                )}
               </button>
             ))}
           </div>
+
+          {/* Show active filter info for VIP */}
+          {selectedFilter === 'vip' && (
+            <div className="mt-3 px-3 py-2 bg-purple-50 border border-purple-100 rounded-lg">
+              <p className="text-sm text-purple-700 flex items-center">
+                <span className="mr-2">👑</span>
+                Showing VIP events only
+              </p>
+            </div>
+          )}
 
           {/* Enhanced Available Seats Filter */}
           {selectedFilter === 'available-seats' && (
@@ -451,7 +489,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                     className={classNames(
                       'flex flex-col items-center justify-center p-2 rounded-lg border transition-colors',
                       availableSeatsCount === option.value
-                        ? 'bg-purple-100 border-purple-300 text-purple-700'
+                        ? 'bg-blue-100 border-blue-300 text-blue-700'
                         : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
                     )}
                   >
@@ -569,7 +607,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                       key={event.id}
                       event={event}
                       isSelected={selectedEvent?.id === event.id}
-                      onSelect={() => handleSelectEvent(event)}
+                      onSelect={handleSelectEvent}
                       onToggleAttendance={handleEventAction}
                       isWaitlisted={isUserWaitlisted(event.id)}
                     />
@@ -600,7 +638,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                         availableSeats: getAvailableSeats(event)
                       }}
                       isSelected={selectedEvent?.id === event.id}
-                      onSelect={() => handleSelectEvent(event)}
+                      onSelect={handleSelectEvent}
                       onToggleAttendance={handleEventAction}
                       isWaitlisted={isUserWaitlisted(event.id)}
                     />
@@ -627,7 +665,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                         availableSeats: getAvailableSeats(event)
                       }}
                       isSelected={selectedEvent?.id === event.id}
-                      onSelect={() => handleSelectEvent(event)}
+                      onSelect={handleSelectEvent}
                       onToggleAttendance={handleEventAction}
                       isWaitlisted={isUserWaitlisted(event.id)}
                     />
@@ -665,7 +703,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
         <EventDetails
           event={selectedEvent}
           onClose={() => {
-            handleSelectEvent(null);
+            handleCloseDetails();
             setSelectedEventWithInvite(false);
           }}
           onJoinEvent={handleJoinClick}
@@ -745,351 +783,121 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
 };
 
 const EventCard = ({ event, isSelected, onSelect, onToggleAttendance, isWaitlisted }) => {
-  const { handleToggleAttendance, isUserWaitlisted } = useEvents();
+  const { isUserAttending, canEditEvent } = useEvents();
   const { friends } = useFriends();
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteMessage, setInviteMessage] = useState('');
-  const [showShareOptions, setShowShareOptions] = useState(false);
-  const [notification, setNotification] = useState(null);
+  const isAttending = isUserAttending(event.id);
+  const canInvite = canEditEvent(event) || isAttending;
+  const isVIP = event.isVIP || event.category === 'vip' || event.eventType === 'vip';
 
-  const isUserAttending = event.attendees.includes('current-user');
-  const hasDeadline = event.registrationDeadline && new Date(event.registrationDeadline) > new Date();
-  const isPastDeadline = event.registrationDeadline && new Date(event.registrationDeadline) <= new Date();
-  const currentAttendees = event.currentAttendees;
-  const peopleNeeded = event.minAttendees - currentAttendees;
-  const isUrgent = peopleNeeded > 0 && hasDeadline && new Date(event.registrationDeadline) - new Date() < 24 * 60 * 60 * 1000;
-  const needsMorePeople = peopleNeeded > 0 && hasDeadline && !isPastDeadline;
+  // Calculate attendance info
+  const currentAttendees = event.attendees?.length || 0;
+  const maxAttendees = event.maxAttendees || 10;
+  const spotsLeft = maxAttendees - currentAttendees;
+  
+  // Get friend attendees (for development, ensure event.attendees exists)
+  const friendAttendees = (event.attendees || [])
+    .filter(attendeeId => friends?.some(friend => friend.id === attendeeId))
+    .map(attendeeId => friends?.find(friend => friend.id === attendeeId))
+    .filter(Boolean);
 
-  const showNotification = (message, type = 'success') => {
-    setNotification({ message, type });
-    setTimeout(() => {
-      setNotification(null);
-    }, 3000);
-  };
-
-  const handleInvite = (e) => {
-    e.stopPropagation();
-    setShowInviteModal(true);
-  };
-
-  const handleShare = (e) => {
-    e.stopPropagation();
-    setShowShareOptions(true);
-  };
-
-  const handleSendInvite = async (e) => {
+  const handleInviteClick = (e) => {
     e.preventDefault();
-    try {
-      // Here you would typically make an API call to send the invite
-      // For now, we'll just show a success message
-      showNotification(`Invitation sent to ${inviteEmail}`, 'success');
-      setShowInviteModal(false);
-      setInviteEmail('');
-      setInviteMessage('');
-    } catch (error) {
-      showNotification('Failed to send invitation. Please try again.', 'error');
-    }
-  };
-
-  const handleCopyLink = async () => {
-    try {
-      const eventUrl = `${window.location.origin}/events/${event.id}`;
-      await navigator.clipboard.writeText(eventUrl);
-      showNotification('Event link copied to clipboard!', 'success');
-      setShowShareOptions(false);
-    } catch (error) {
-      showNotification('Failed to copy link. Please try again.', 'error');
-    }
-  };
-
-  const getFriendAttendees = (eventId) => {
-    if (!event.attendees || !friends) return [];
-    return event.attendees.filter(attendeeId => 
-      friends.some(friend => friend.id === attendeeId)
-    ).map(attendeeId => friends.find(friend => friend.id === attendeeId));
+    e.stopPropagation();
+    console.log('Invite button clicked for event:', event.title);
+    onSelect(event, true);
   };
 
   return (
-    <>
-      <div
-        className={classNames(
-          'relative p-4 rounded-lg border transition-all duration-200 cursor-pointer overflow-hidden',
-          isSelected ? 'border-rose-500 bg-rose-50' : 
-          needsMorePeople ? 'border-purple-500 bg-purple-50' :
-          'border-gray-200 hover:border-rose-300 hover:bg-rose-50/50',
-          isWaitlisted ? 'opacity-75' : ''
-        )}
-        onClick={() => onSelect(event)}
-      >
-        <div className="flex items-start justify-between space-x-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center flex-wrap gap-2">
-              <span className="text-2xl shrink-0">{event.emoji}</span>
-              <h3 className="text-lg font-semibold text-gray-900 min-w-0 truncate">
-                {event.title.replace(`${event.emoji} `, '')}
-              </h3>
-              {isWaitlisted && (
-                <span className="shrink-0 px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">
-                  Waitlisted
-                </span>
-              )}
-              {needsMorePeople && (
-                <span className="shrink-0 px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-800">
-                  Needs {peopleNeeded} more {peopleNeeded === 1 ? 'person' : 'people'}
-                </span>
-              )}
-            </div>
-            <p className="mt-1 text-sm text-gray-600 line-clamp-2">{event.description}</p>
-            <div className="mt-2 flex items-center text-sm text-gray-500">
-              <CalendarIcon className="h-4 w-4 mr-1" />
-              <span>{format(new Date(event.date), 'MMM d')} at {event.time}</span>
-            </div>
-            <div className="mt-1 flex items-center text-sm text-gray-500">
-              <MapPinIcon className="h-4 w-4 mr-1" />
-              <span>{event.location}</span>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <UserGroupIcon className="h-4 w-4 text-gray-500 shrink-0" />
-              {event.maxAttendees - event.currentAttendees > 0 ? (
-                <span className="text-sm text-gray-600">
-                  {event.maxAttendees - event.currentAttendees} seats open
-                </span>
-              ) : (
-                <span className="text-sm text-gray-600">Full</span>
-              )}
-              {event.minAttendees > event.currentAttendees && (
-                <>
-                  <span className="text-sm text-gray-400">·</span>
-                  <span className="text-sm text-purple-600">
-                    Need {event.minAttendees - event.currentAttendees} more
-                  </span>
-                </>
-              )}
-              {getFriendAttendees(event.id).length > 0 ? (
-                <>
-                  <span className="text-sm text-gray-400">·</span>
-                  <span className="text-sm text-gray-600">
-                    {getFriendAttendees(event.id)[0].name} + {event.currentAttendees - 1} {event.currentAttendees - 1 === 1 ? 'other' : 'others'}
-                  </span>
-                </>
-              ) : (
-                event.currentAttendees > 0 && (
-                  <>
-                    <span className="text-sm text-gray-400">·</span>
-                    <span className="text-sm text-gray-600">{event.currentAttendees} going</span>
-                  </>
-                )
-              )}
-            </div>
-            {needsMorePeople && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button
-                  onClick={handleInvite}
-                  className={classNames(
-                    'inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap',
-                    isUrgent
-                      ? 'bg-red-100 text-red-800 hover:bg-red-200'
-                      : 'bg-purple-100 text-purple-800 hover:bg-purple-200'
-                  )}
-                >
-                  <UserPlusIcon className="h-4 w-4 mr-1 shrink-0" />
-                  Invite {peopleNeeded} more {peopleNeeded === 1 ? 'person' : 'people'}
-                </button>
-                {isUrgent && (
-                  <span className="text-xs text-red-600 whitespace-nowrap">
-                    Registration ends soon!
-                  </span>
-                )}
-              </div>
+    <div
+      className={`p-4 rounded-lg cursor-pointer transition-all duration-200 relative ${
+        isSelected ? 'bg-blue-50 border-2 border-blue-500' : 'bg-white border border-gray-200 hover:border-blue-300'
+      }`}
+      onClick={(e) => {
+        e.preventDefault();
+        onSelect(event, false);
+      }}
+    >
+      <div className="flex flex-col">
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium text-gray-900">{event.title}</h3>
+            {isVIP && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                VIP
+              </span>
             )}
           </div>
-          <div className="shrink-0">
-            {!isUserAttending && !isWaitlisted && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleAttendance(event);
-                }}
-                className={classNames(
-                  'px-3 py-1 rounded-full text-sm font-medium',
-                  currentAttendees < event.maxAttendees
-                    ? 'bg-rose-100 text-rose-800 hover:bg-rose-200'
-                    : 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                )}
-              >
-                {currentAttendees < event.maxAttendees ? 'Join' : 'Full'}
-              </button>
-            )}
-            {isUserAttending && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleAttendance(event);
-                }}
-                className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800 hover:bg-gray-200"
-              >
-                Leave
-              </button>
-            )}
-            {isWaitlisted && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleAttendance(event);
-                }}
-                className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800 hover:bg-gray-200"
-              >
-                Leave Waitlist
-              </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleAttendance(event);
+            }}
+            className={`px-3 py-1 rounded-full text-sm font-medium ${
+              isAttending
+                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                : isWaitlisted
+                ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+            }`}
+          >
+            {isAttending ? 'Attending' : isWaitlisted ? 'Waitlisted' : 'Join'}
+          </button>
+        </div>
+
+        <p className="text-sm text-gray-500 mb-3">{event.description}</p>
+          
+        {/* Event Details */}
+        <div className="space-y-2">
+          {/* Date and Time */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center text-sm text-gray-600">
+              <CalendarIcon className="w-4 h-4 mr-1.5" />
+              <span>{format(new Date(event.date), 'MMM d, yyyy')}</span>
+            </div>
+            <div className="flex items-center text-sm text-gray-600">
+              <ClockIcon className="w-4 h-4 mr-1.5" />
+              <span>{event.time || '7:00 PM'}</span>
+            </div>
+          </div>
+            
+          {/* Location */}
+          <div className="flex items-center text-sm text-gray-600">
+            <MapPinIcon className="w-4 h-4 mr-1.5" />
+            <span>{event.location || 'San Francisco, CA'}</span>
+          </div>
+
+          {/* Attendance Info */}
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center text-gray-600">
+              <UserGroupIcon className="w-4 h-4 mr-1.5" />
+              <span>{currentAttendees} attending</span>
+              {spotsLeft > 0 && (
+                <span className="ml-1 text-green-600">
+                  ({spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left)
+                </span>
+              )}
+            </div>
+            {friendAttendees.length > 0 && (
+              <div className="text-blue-600">
+                {friendAttendees[0]?.name} {friendAttendees.length > 1 ? `+ ${friendAttendees.length - 1} friends` : 'is going'}
+              </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Invite Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg w-full max-w-md mx-4">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h3 className="text-xl font-semibold">Invite People to {event.title}</h3>
-              <button
-                onClick={() => setShowInviteModal(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XMarkIcon className="h-6 w-6" />
-              </button>
-            </div>
-
-            {/* People Needed Banner */}
-            {needsMorePeople && (
-              <div className="bg-green-50 p-4 flex items-center gap-2">
-                <UserGroupIcon className="h-5 w-5 text-green-600" />
-                <p className="text-green-700">
-                  This event needs {peopleNeeded} more {peopleNeeded === 1 ? 'person' : 'people'} to happen
-                </p>
-              </div>
-            )}
-
-            <div className="p-4 space-y-6">
-              {/* Share Event Link */}
-              <div className="space-y-2">
-                <h4 className="text-base font-medium text-gray-900">Share Event Link</h4>
-                <div className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                  <input
-                    type="text"
-                    readOnly
-                    value={`${window.location.origin}/event/${event.id}`}
-                    className="flex-1 bg-transparent border-none text-sm text-gray-600 focus:outline-none"
-                  />
-                  <button
-                    onClick={handleCopyLink}
-                    className="px-4 py-1 text-sm font-medium text-gray-700 hover:text-gray-900"
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
-
-              {/* Send Email Invite */}
-              <div className="space-y-2">
-                <h4 className="text-base font-medium text-gray-900">Send Email Invite</h4>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="Enter email address"
-                    className="flex-1 p-2 text-sm border rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  />
-                  <button
-                    onClick={handleSendInvite}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700"
-                  >
-                    Send
-                  </button>
-                </div>
-              </div>
-
-              {/* Share on Social Media */}
-              <div className="space-y-2">
-                <h4 className="text-base font-medium text-gray-900">Share on Social Media</h4>
-                <div className="flex gap-2">
-                  <button className="flex-1 py-2 px-4 text-sm font-medium text-[#1DA1F2] bg-[#E8F5FD] rounded hover:bg-[#d4edfb]">
-                    Share on Twitter
-                  </button>
-                  <button className="flex-1 py-2 px-4 text-sm font-medium text-[#4267B2] bg-[#E7EEF8] rounded hover:bg-[#d9e4f6]">
-                    Share on Facebook
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* Invite Button - Positioned absolutely in bottom right */}
+      {canInvite && (
+        <button
+          onClick={handleInviteClick}
+          className="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition-colors shadow-sm"
+          title="Invite friends"
+          type="button"
+        >
+          <UserPlusIcon className="w-4 h-4" />
+        </button>
       )}
-
-      {/* Share Options Modal */}
-      {showShareOptions && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-semibold">Share Event</h3>
-              <button
-                onClick={() => setShowShareOptions(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <XMarkIcon className="h-6 w-6" />
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg">
-                <input
-                  type="text"
-                  readOnly
-                  value={`${window.location.origin}/events/${event.id}`}
-                  className="flex-1 bg-transparent border-none focus:outline-none text-sm"
-                />
-                <button
-                  onClick={handleCopyLink}
-                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 text-sm"
-                >
-                  Copy Link
-                </button>
-              </div>
-              <div className="flex justify-center space-x-4">
-                <button className="p-2 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200">
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                  </svg>
-                </button>
-                <button className="p-2 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200">
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
-                  </svg>
-                </button>
-                <button className="p-2 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200">
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                  </svg>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Notification */}
-      {notification && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg flex items-center ${
-          notification.type === 'success' ? 'bg-green-100 text-green-800' :
-          notification.type === 'error' ? 'bg-red-100 text-red-800' :
-          'bg-blue-100 text-blue-800'
-        }`}>
-          <CheckCircleIcon className="h-5 w-5 mr-2" />
-          <span>{notification.message}</span>
-        </div>
-      )}
-    </>
+    </div>
   );
 };
 

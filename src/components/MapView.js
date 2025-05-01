@@ -135,8 +135,59 @@ const MapView = ({ selectedCategories = [], onEventSelect, timelineView, selecte
 
   return (
     <div className="relative h-screen">
-      <div className="absolute top-4 left-4 right-4 z-10">
-        <LocationSearch onLocationSelect={handleLocationSelect} />
+      {/* Top controls container */}
+      <div className="absolute top-4 left-4 right-4 z-10 flex flex-col space-y-4">
+        {/* Search bar */}
+        <div className="w-full">
+          <LocationSearch onLocationSelect={handleLocationSelect} />
+        </div>
+        
+        {/* Date selector */}
+        <div className="flex items-center space-x-4 bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow-lg inline-block mx-auto">
+          <button
+            onClick={() => onTimelineChange('day')}
+            className={classNames(
+              'px-3 py-1 rounded-md text-sm font-medium transition-colors',
+              timelineView === 'day'
+                ? 'bg-indigo-100 text-indigo-700'
+                : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            Day
+          </button>
+          <button
+            onClick={() => onTimelineChange('week')}
+            className={classNames(
+              'px-3 py-1 rounded-md text-sm font-medium transition-colors',
+              timelineView === 'week'
+                ? 'bg-indigo-100 text-indigo-700'
+                : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            Week
+          </button>
+          <button
+            onClick={() => onTimelineChange('month')}
+            className={classNames(
+              'px-3 py-1 rounded-md text-sm font-medium transition-colors',
+              timelineView === 'month'
+                ? 'bg-indigo-100 text-indigo-700'
+                : 'text-gray-600 hover:bg-gray-100'
+            )}
+          >
+            Month
+          </button>
+          <div className="text-sm font-medium text-gray-700 whitespace-nowrap">
+            {getDateRangeText()}
+          </div>
+        </div>
+
+        {/* Event count badge */}
+        <div className="bg-white/90 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg inline-block mx-auto">
+          <span className="text-sm text-gray-600 whitespace-nowrap">
+            {getFilteredEvents().length} events {timelineView === 'day' ? 'today' : `this ${timelineView}`}
+          </span>
+        </div>
       </div>
 
       <Map
@@ -238,52 +289,6 @@ const MapView = ({ selectedCategories = [], onEventSelect, timelineView, selecte
           </Popup>
         )}
       </Map>
-
-      {/* Timeline controls */}
-      <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-white px-6 py-3 rounded-full shadow-lg z-10 flex items-center space-x-4">
-        <button
-          onClick={() => onTimelineChange(timelineView, addDays(selectedDate, -1))}
-          className="text-gray-600 hover:text-gray-900"
-        >
-          ←
-        </button>
-        
-        <div className="flex items-center space-x-2">
-          {['day', 'week', 'month'].map(option => (
-            <button
-              key={option}
-              onClick={() => onTimelineChange(option, selectedDate)}
-              className={`
-                px-3 py-1 rounded-full text-sm
-                ${timelineView === option
-                  ? 'bg-rose-500 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }
-              `}
-            >
-              {option.charAt(0).toUpperCase() + option.slice(1)}
-            </button>
-          ))}
-        </div>
-
-        <span className="font-medium min-w-[150px] text-center">
-          {getDateRangeText()}
-        </span>
-
-        <button
-          onClick={() => onTimelineChange(timelineView, addDays(selectedDate, 1))}
-          className="text-gray-600 hover:text-gray-900"
-        >
-          →
-        </button>
-      </div>
-
-      {/* Event count badge */}
-      <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white px-4 py-2 rounded-full shadow-md z-10">
-        <span className="text-sm text-gray-600">
-          {getFilteredEvents().length} events {timelineView === 'day' ? 'today' : `this ${timelineView}`}
-        </span>
-      </div>
     </div>
   );
 };
