@@ -36,13 +36,9 @@ const Navigation = () => {
     return location.pathname === path;
   };
 
-  // Update the showAdminTab logic
+  // Simplified admin tab logic
   const isDevelopment = process.env.NODE_ENV === 'development';
-  console.log('Development mode:', isDevelopment);
-  console.log('Admin loading:', adminLoading);
-  console.log('Is admin:', isAdmin);
   const showAdminTab = !adminLoading && (isDevelopment || isAdmin);
-  console.log('Show admin tab:', showAdminTab);
 
   return (
     <nav className="bg-white shadow-sm">

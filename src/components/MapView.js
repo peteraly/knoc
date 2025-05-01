@@ -5,6 +5,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { format, addDays, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { useEvents } from '../contexts/EventContext';
 import { classNames } from '../utils/classNames';
+import { NavigationControl } from 'react-map-gl';
 
 // Get the Mapbox token from environment variables
 const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
@@ -13,12 +14,17 @@ const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
 const DEFAULT_COORDINATES = [-122.4194, 37.7749];
 
 const MapView = ({ selectedCategories = [], onEventSelect, timelineView, selectedDate, onTimelineChange }) => {
-  const { events, eventCategories } = useEvents();
+  const { events, eventCategories, isUserAttending } = useEvents();
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [hoveredEvent, setHoveredEvent] = useState(null);
+  const [userLocation, setUserLocation] = useState(null);
+  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
+  const [zipCode, setZipCode] = useState('');
+  const [mapError, setMapError] = useState(false);
   const [viewport, setViewport] = useState({
-    latitude: 37.7749,
-    longitude: -122.4194,
-    zoom: 12
+    longitude: DEFAULT_COORDINATES[0],
+    latitude: DEFAULT_COORDINATES[1],
+    zoom: 12.5
   });
   
   const [popupInfo, setPopupInfo] = useState(null);
@@ -128,7 +134,7 @@ const MapView = ({ selectedCategories = [], onEventSelect, timelineView, selecte
   };
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative h-screen">
       <div className="absolute top-4 left-4 right-4 z-10">
         <LocationSearch onLocationSelect={handleLocationSelect} />
       </div>
@@ -136,42 +142,74 @@ const MapView = ({ selectedCategories = [], onEventSelect, timelineView, selecte
       <Map
         {...viewport}
         onMove={handleMapMove}
-        mapStyle="mapbox://styles/mapbox/streets-v11"
-        mapboxAccessToken={process.env.REACT_APP_MAPBOX_TOKEN}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle="mapbox://styles/mapbox/streets-v12"
+        mapboxAccessToken={MAPBOX_TOKEN}
       >
-        {filteredEvents.map(event => {
-          const isSelected = selectedEvent?.id === event.id;
-          const categoryInfo = getCategoryInfo(event);
+        <NavigationControl position="top-right" />
+
+        {/* User location marker */}
+        {userLocation && (
+          <Marker
+            longitude={userLocation.longitude}
+            latitude={userLocation.latitude}
+            anchor="center"
+          >
+            <div className="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg pulse-animation" />
+          </Marker>
+        )}
+
+        {/* Event markers */}
+        {getFilteredEvents().map(event => {
+          const isAttending = isUserAttending(event.id);
+          // Ensure coordinates are valid numbers
+          const longitude = typeof event.coordinates === 'object' ? event.coordinates.lng : event.coordinates[0];
+          const latitude = typeof event.coordinates === 'object' ? event.coordinates.lat : event.coordinates[1];
           
+          // Skip invalid coordinates
+          if (isNaN(longitude) || isNaN(latitude)) {
+            console.warn(`Invalid coordinates for event ${event.id}:`, event.coordinates);
+            return null;
+          }
+
           return (
             <Marker
               key={event.id}
-              latitude={event.coordinates.lat}
-              longitude={event.coordinates.lng}
-              anchor="bottom"
-              onClick={(e) => {
+              longitude={longitude}
+              latitude={latitude}
+              anchor="center"
+              onClick={e => {
                 e.originalEvent.stopPropagation();
-                handleMarkerClick(event);
+                setSelectedEvent(selectedEvent?.id === event.id ? null : event);
               }}
             >
               <div
-                className={classNames(
-                  'relative flex items-center justify-center',
-                  'w-10 h-10 rounded-full border-2 border-white shadow-lg',
-                  'transform transition-all duration-300',
-                  isSelected
-                    ? 'scale-125 -translate-y-1'
-                    : 'hover:scale-110',
-                )}
+                className={`event-marker ${isAttending ? 'attending' : ''}`}
+                onMouseEnter={() => setHoveredEvent(event)}
+                onMouseLeave={() => setHoveredEvent(null)}
                 style={{
-                  backgroundColor: isSelected ? categoryInfo.hoverColor : categoryInfo.color
+                  padding: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(244, 63, 94, 0.75)',
+                  color: '#ffffff',
+                  boxShadow: isAttending
+                    ? '0 0 15px rgba(99, 102, 241, 0.7)' // indigo-500 with glow
+                    : '0 2px 8px rgba(0,0,0,0.3)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '44px',
+                  height: '44px',
+                  border: isAttending
+                    ? '3px solid rgb(99, 102, 241)' // indigo-500
+                    : '3px solid white',
+                  transition: 'transform 0.2s ease-in-out, background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out',
+                  transform: (hoveredEvent?.id === event.id || selectedEvent?.id === event.id) ? 'scale(1.1)' : 'scale(1)',
+                  backgroundColor: (hoveredEvent?.id === event.id || selectedEvent?.id === event.id) ? 'rgba(244, 63, 94, 0.85)' : 'rgba(244, 63, 94, 0.75)'
                 }}
               >
-                <span className="text-lg">{categoryInfo.emoji}</span>
-                {isSelected && (
-                  <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 
-                                w-3 h-3 rotate-45 bg-inherit" />
-                )}
+                <div className="text-xl">{event.emoji}</div>
               </div>
             </Marker>
           );

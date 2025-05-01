@@ -369,6 +369,10 @@ export const EventProvider = ({ children }) => {
     loading,
     invites,
     setInvites,
+    isUserAttending: (eventId) => {
+      const event = events.find(e => e.id === eventId);
+      return event?.attendees?.includes('current-user') || false;
+    },
     getWaitlistPosition: (eventId) => {
       const event = events.find(e => e.id === eventId);
       if (!event?.waitlist) return -1;

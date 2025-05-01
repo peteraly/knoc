@@ -34,7 +34,7 @@ function App() {
                       <Route path="/register" element={<Register />} />
 
                       {/* Protected routes */}
-                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                      <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
                       <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
                       <Route path="/events" element={<PrivateRoute><Events /></PrivateRoute>} />
                       <Route path="/my-events" element={<PrivateRoute><MyEvents /></PrivateRoute>} />

@@ -15,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 import { useEvents } from '../contexts/EventContext';
+import { useFriends } from '../contexts/FriendsContext';
 import { toast } from 'react-hot-toast';
 import EventForm from './EventForm';
 
@@ -25,6 +26,7 @@ export default function EventDetails({ event, onClose, onJoinEvent, openInviteDi
   const [emailInput, setEmailInput] = useState('');
   const [isCopied, setIsCopied] = useState(false);
   const { isUserAttending, isUserWaitlisted, getWaitlistPosition, getEventWaitlistCount, handleInviteUser, canEditEvent, handleEditEvent } = useEvents();
+  const { friends } = useFriends();
   
   useEffect(() => {
     // Open invite modal directly if requested
@@ -119,6 +121,13 @@ export default function EventDetails({ event, onClose, onJoinEvent, openInviteDi
     window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`, '_blank');
   };
 
+  const getNetworkAttendees = () => {
+    if (!event.attendees || !friends) return [];
+    return event.attendees.filter(attendeeId => 
+      friends.some(friend => friend.id === attendeeId)
+    ).map(attendeeId => friends.find(friend => friend.id === attendeeId));
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose}></div>
@@ -188,27 +197,29 @@ export default function EventDetails({ event, onClose, onJoinEvent, openInviteDi
                 <h3 className="font-medium mb-3">Attendance</h3>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Current attendees</span>
-                    <span className="font-medium">{currentAttendees}</span>
+                    <span className="text-gray-600">Available seats</span>
+                    <span className="font-medium">{event.maxAttendees - currentAttendees} open</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Maximum capacity</span>
-                    <span className="font-medium">{event.maxAttendees}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-600">Minimum needed</span>
-                    <span className="font-medium">{event.minAttendees}</span>
-                  </div>
-                  {peopleNeeded > 0 && (
-                    <div className="mt-3 flex items-center text-green-700 bg-green-50 px-3 py-2 rounded-md">
-                      <UserGroupIcon className="w-5 h-5 mr-2" />
-                      <span className="font-medium">{peopleNeeded} more people needed</span>
+                  {event.minAttendees > currentAttendees && (
+                    <div className="flex items-center justify-between text-purple-700">
+                      <span>Needed for event</span>
+                      <span className="font-medium">{event.minAttendees - currentAttendees} more people</span>
                     </div>
                   )}
-                  {spotsLeft > 0 && (
-                    <div className="mt-1 text-sm text-gray-500">
-                      {spotsLeft} {spotsLeft === 1 ? 'spot' : 'spots'} left
+                  {getNetworkAttendees().length > 0 ? (
+                    <div className="mt-3 flex items-center text-gray-700">
+                      <UserGroupIcon className="w-5 h-5 mr-2" />
+                      <span>
+                        {getNetworkAttendees()[0].name} + {currentAttendees - 1} {currentAttendees - 1 === 1 ? 'other is' : 'others are'} going
+                      </span>
                     </div>
+                  ) : (
+                    currentAttendees > 0 && (
+                      <div className="mt-3 flex items-center text-gray-700">
+                        <UserGroupIcon className="w-5 h-5 mr-2" />
+                        <span>{currentAttendees} people going</span>
+                      </div>
+                    )
                   )}
                   {isWaitlisted && (
                     <div className="mt-3 flex items-center text-yellow-700 bg-yellow-50 px-3 py-2 rounded-md">

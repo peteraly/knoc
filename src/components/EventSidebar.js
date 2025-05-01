@@ -62,12 +62,12 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
 
   // Add available seats options
   const availableSeatsOptions = [
-    { value: 'any', label: 'Any number of seats' },
-    { value: '1', label: '1 seat' },
-    { value: '2', label: '2 seats' },
-    { value: '3', label: '3 seats' },
-    { value: '4', label: '4 seats' },
-    { value: '5', label: '5+ seats' }
+    { value: 'any', label: 'Any number of seats', icon: '🎫' },
+    { value: '1', label: '1 seat', icon: '👤' },
+    { value: '2', label: '2 seats', icon: '👥' },
+    { value: '3', label: '3 seats', icon: '👥' },
+    { value: '4', label: '4 seats', icon: '👥' },
+    { value: '5', label: '5+ seats', icon: '👥' }
   ];
 
   // Show notification and auto-hide after 3 seconds
@@ -173,7 +173,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
       filtered = filtered.filter(event => event.neighborhood === selectedNeighborhood);
     }
 
-    // Apply additional filters
+    // Apply additional filters and sorting
     switch (selectedFilter) {
       case 'available-seats':
         filtered = filtered.filter(event => {
@@ -201,13 +201,86 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
         filtered.sort((a, b) => b.currentAttendees - a.currentAttendees);
         break;
       default:
+        // Default sorting logic for 'all' filter
+        filtered.sort((a, b) => {
+          const now = new Date();
+          const aDate = new Date(a.date);
+          const bDate = new Date(b.date);
+          
+          // First, prioritize events happening today
+          const aIsToday = aDate.toDateString() === now.toDateString();
+          const bIsToday = bDate.toDateString() === now.toDateString();
+          if (aIsToday && !bIsToday) return -1;
+          if (!aIsToday && bIsToday) return 1;
+          
+          // Then, prioritize events with more available seats
+          const aSeats = a.maxAttendees - a.currentAttendees;
+          const bSeats = b.maxAttendees - b.currentAttendees;
+          if (aSeats !== bSeats) return bSeats - aSeats;
+          
+          // Finally, sort by date
+          return aDate - bDate;
+        });
         break;
     }
 
-    return {
-      timelineEvents: filtered.filter(isEventInTimeline),
-      otherEvents: filtered.filter(event => !isEventInTimeline(event))
-    };
+    // Split events into timeline and other events
+    const timelineEvents = filtered.filter(isEventInTimeline);
+    const otherEvents = filtered.filter(event => !isEventInTimeline(event));
+
+    // Sort other events based on timeline view
+    if (timelineView === 'day') {
+      otherEvents.sort((a, b) => {
+        const aDate = new Date(a.date);
+        const bDate = new Date(b.date);
+        const now = new Date();
+        
+        // Prioritize events happening today
+        const aIsToday = aDate.toDateString() === now.toDateString();
+        const bIsToday = bDate.toDateString() === now.toDateString();
+        if (aIsToday && !bIsToday) return -1;
+        if (!aIsToday && bIsToday) return 1;
+        
+        // Then sort by date
+        return aDate - bDate;
+      });
+    } else if (timelineView === 'week') {
+      otherEvents.sort((a, b) => {
+        const aDate = new Date(a.date);
+        const bDate = new Date(b.date);
+        const now = new Date();
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - now.getDay());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        
+        // Prioritize events in the current week
+        const aInWeek = aDate >= weekStart && aDate <= weekEnd;
+        const bInWeek = bDate >= weekStart && bDate <= weekEnd;
+        if (aInWeek && !bInWeek) return -1;
+        if (!aInWeek && bInWeek) return 1;
+        
+        // Then sort by date
+        return aDate - bDate;
+      });
+    } else if (timelineView === 'month') {
+      otherEvents.sort((a, b) => {
+        const aDate = new Date(a.date);
+        const bDate = new Date(b.date);
+        const now = new Date();
+        
+        // Prioritize events in the current month
+        const aInMonth = aDate.getMonth() === now.getMonth() && aDate.getFullYear() === now.getFullYear();
+        const bInMonth = bDate.getMonth() === now.getMonth() && bDate.getFullYear() === now.getFullYear();
+        if (aInMonth && !bInMonth) return -1;
+        if (!aInMonth && bInMonth) return 1;
+        
+        // Then sort by date
+        return aDate - bDate;
+      });
+    }
+
+    return { timelineEvents, otherEvents };
   };
 
   // Get filtered events
@@ -366,24 +439,27 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
             ))}
           </div>
 
-          {/* Available Seats Filter Dropdown */}
+          {/* Enhanced Available Seats Filter */}
           {selectedFilter === 'available-seats' && (
-            <div className="mt-2 flex items-center space-x-2">
-              <label htmlFor="seats-filter" className="text-sm text-gray-600">
-                Looking for:
-              </label>
-              <select
-                id="seats-filter"
-                value={availableSeatsCount}
-                onChange={(e) => setAvailableSeatsCount(e.target.value)}
-                className="text-sm border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              >
+            <div className="mt-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-2">Available Seats</h3>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                 {availableSeatsOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
+                  <button
+                    key={option.value}
+                    onClick={() => setAvailableSeatsCount(option.value)}
+                    className={classNames(
+                      'flex flex-col items-center justify-center p-2 rounded-lg border transition-colors',
+                      availableSeatsCount === option.value
+                        ? 'bg-purple-100 border-purple-300 text-purple-700'
+                        : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                    )}
+                  >
+                    <span className="text-xl mb-1">{option.icon}</span>
+                    <span className="text-xs">{option.label}</span>
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
           )}
         </div>
@@ -670,6 +746,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
 
 const EventCard = ({ event, isSelected, onSelect, onToggleAttendance, isWaitlisted }) => {
   const { handleToggleAttendance, isUserWaitlisted } = useEvents();
+  const { friends } = useFriends();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteMessage, setInviteMessage] = useState('');
@@ -726,6 +803,13 @@ const EventCard = ({ event, isSelected, onSelect, onToggleAttendance, isWaitlist
     }
   };
 
+  const getFriendAttendees = (eventId) => {
+    if (!event.attendees || !friends) return [];
+    return event.attendees.filter(attendeeId => 
+      friends.some(friend => friend.id === attendeeId)
+    ).map(attendeeId => friends.find(friend => friend.id === attendeeId));
+  };
+
   return (
     <>
       <div
@@ -767,12 +851,36 @@ const EventCard = ({ event, isSelected, onSelect, onToggleAttendance, isWaitlist
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <UserGroupIcon className="h-4 w-4 text-gray-500 shrink-0" />
-              <span className={classNames(
-                'text-sm font-medium',
-                currentAttendees >= event.minAttendees ? 'text-green-600' : 'text-purple-600'
-              )}>
-                {currentAttendees}/{event.minAttendees} attending
-              </span>
+              {event.maxAttendees - event.currentAttendees > 0 ? (
+                <span className="text-sm text-gray-600">
+                  {event.maxAttendees - event.currentAttendees} seats open
+                </span>
+              ) : (
+                <span className="text-sm text-gray-600">Full</span>
+              )}
+              {event.minAttendees > event.currentAttendees && (
+                <>
+                  <span className="text-sm text-gray-400">·</span>
+                  <span className="text-sm text-purple-600">
+                    Need {event.minAttendees - event.currentAttendees} more
+                  </span>
+                </>
+              )}
+              {getFriendAttendees(event.id).length > 0 ? (
+                <>
+                  <span className="text-sm text-gray-400">·</span>
+                  <span className="text-sm text-gray-600">
+                    {getFriendAttendees(event.id)[0].name} + {event.currentAttendees - 1} {event.currentAttendees - 1 === 1 ? 'other' : 'others'}
+                  </span>
+                </>
+              ) : (
+                event.currentAttendees > 0 && (
+                  <>
+                    <span className="text-sm text-gray-400">·</span>
+                    <span className="text-sm text-gray-600">{event.currentAttendees} going</span>
+                  </>
+                )
+              )}
             </div>
             {needsMorePeople && (
               <div className="mt-2 flex flex-wrap items-center gap-2">

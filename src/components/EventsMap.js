@@ -3,6 +3,7 @@ import Map, { Marker, Popup, NavigationControl } from 'react-map-gl';
 import { format, addDays, startOfDay } from 'date-fns';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { EVENTS } from '../data/events';
+import { useEvents } from '../contexts/EventsContext';
 
 // Get the Mapbox token from environment variables
 const MAPBOX_TOKEN = process.env.REACT_APP_MAPBOX_TOKEN;
@@ -30,6 +31,7 @@ export default function EventsMap() {
   const [showLocationPrompt, setShowLocationPrompt] = useState(false);
   const [zipCode, setZipCode] = useState('');
   const [mapError, setMapError] = useState(false);
+  const { isUserAttending, events } = useEvents();
 
   // Initialize map
   useEffect(() => {
@@ -176,43 +178,50 @@ export default function EventsMap() {
         )}
 
         {/* Event markers */}
-        {EVENTS.map(event => (
-          <Marker
-            key={event.id}
-            longitude={event.coordinates[0]}
-            latitude={event.coordinates[1]}
-            anchor="center"
-            onClick={e => {
-              e.originalEvent.stopPropagation();
-              setSelectedEvent(selectedEvent?.id === event.id ? null : event);
-            }}
-          >
-            <div
-              className="event-marker"
-              onMouseEnter={() => setHoveredEvent(event)}
-              onMouseLeave={() => setHoveredEvent(null)}
-              style={{
-                padding: '8px',
-                borderRadius: '50%',
-                backgroundColor: 'rgba(244, 63, 94, 0.75)',
-                color: '#ffffff',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '44px',
-                height: '44px',
-                border: '3px solid white',
-                transition: 'transform 0.2s ease-in-out, background-color 0.2s ease-in-out',
-                transform: (hoveredEvent?.id === event.id || selectedEvent?.id === event.id) ? 'scale(1.1)' : 'scale(1)',
-                backgroundColor: (hoveredEvent?.id === event.id || selectedEvent?.id === event.id) ? 'rgba(244, 63, 94, 0.85)' : 'rgba(244, 63, 94, 0.75)'
+        {events.map(event => {
+          const isAttending = isUserAttending(event.id);
+          return (
+            <Marker
+              key={event.id}
+              longitude={event.coordinates[0]}
+              latitude={event.coordinates[1]}
+              anchor="center"
+              onClick={e => {
+                e.originalEvent.stopPropagation();
+                setSelectedEvent(selectedEvent?.id === event.id ? null : event);
               }}
             >
-              <div className="text-xl">{event.emoji}</div>
-            </div>
-          </Marker>
-        ))}
+              <div
+                className={`event-marker ${isAttending ? 'attending' : ''}`}
+                onMouseEnter={() => setHoveredEvent(event)}
+                onMouseLeave={() => setHoveredEvent(null)}
+                style={{
+                  padding: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: 'rgba(244, 63, 94, 0.75)',
+                  color: '#ffffff',
+                  boxShadow: isAttending
+                    ? '0 0 10px rgba(74, 222, 128, 0.5)'
+                    : '0 2px 8px rgba(0,0,0,0.3)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '44px',
+                  height: '44px',
+                  border: isAttending
+                    ? '3px solid rgb(74, 222, 128)'
+                    : '3px solid white',
+                  transition: 'transform 0.2s ease-in-out, background-color 0.2s ease-in-out',
+                  transform: (hoveredEvent?.id === event.id || selectedEvent?.id === event.id) ? 'scale(1.1)' : 'scale(1)',
+                  backgroundColor: (hoveredEvent?.id === event.id || selectedEvent?.id === event.id) ? 'rgba(244, 63, 94, 0.85)' : 'rgba(244, 63, 94, 0.75)'
+                }}
+              >
+                <div className="text-xl">{event.emoji}</div>
+              </div>
+            </Marker>
+          );
+        })}
 
         {/* Popup for hovered/selected event */}
         {(hoveredEvent || selectedEvent) && (

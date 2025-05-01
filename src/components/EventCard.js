@@ -198,26 +198,32 @@ const EventCard = ({ event, onClick }) => {
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center text-gray-600">
                     <UserGroupIcon className="h-4 w-4 min-w-[1rem] mr-2" />
-                    <span className="text-sm">{event.attendees.length} / {event.maxAttendees}</span>
+                    {event.maxAttendees - event.attendees.length > 0 ? (
+                      <span className="text-sm">{event.maxAttendees - event.attendees.length} seats open</span>
+                    ) : (
+                      <span className="text-sm">Full</span>
+                    )}
                   </div>
 
                   {/* Network attendees preview */}
-                  {getNetworkAttendees().length > 0 && (
-                    <div className="flex -space-x-2 overflow-hidden">
-                      {getNetworkAttendees().slice(0, 3).map(attendee => (
-                        <img
-                          key={attendee.id}
-                          className="inline-block h-6 w-6 rounded-full ring-2 ring-white"
-                          src={attendee.avatar || '/default-avatar.png'}
-                          alt={attendee.name}
-                        />
-                      ))}
-                      {getNetworkAttendees().length > 3 && (
-                        <div className="flex items-center justify-center h-6 w-6 rounded-full bg-gray-200 text-xs text-gray-600 ring-2 ring-white">
-                          +{getNetworkAttendees().length - 3}
-                        </div>
-                      )}
+                  {getNetworkAttendees().length > 0 ? (
+                    <div className="flex items-center">
+                      <span className="text-sm text-gray-600 mr-2">·</span>
+                      <div className="flex items-center">
+                        {getNetworkAttendees().slice(0, 1).map(attendee => (
+                          <span key={attendee.id} className="text-sm text-gray-600">
+                            {attendee.name} + {event.attendees.length - 1} {event.attendees.length - 1 === 1 ? 'other' : 'others'}
+                          </span>
+                        ))}
+                      </div>
                     </div>
+                  ) : (
+                    event.attendees.length > 0 && (
+                      <div className="flex items-center">
+                        <span className="text-sm text-gray-600 mr-2">·</span>
+                        <span className="text-sm text-gray-600">{event.attendees.length} going</span>
+                      </div>
+                    )
                   )}
                 </div>
 
