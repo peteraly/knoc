@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserGroupIcon, MagnifyingGlassIcon, CalendarIcon, UserPlusIcon, PlusIcon, XMarkIcon, ClockIcon, ShareIcon, CheckCircleIcon, EnvelopeIcon, LinkIcon, MapPinIcon } from '@heroicons/react/24/outline';
+import { UserGroupIcon, MagnifyingGlassIcon, CalendarIcon, UserPlusIcon, PlusIcon, XMarkIcon, ClockIcon, ShareIcon, CheckCircleIcon, EnvelopeIcon, LinkIcon, MapPinIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { classNames } from '../utils/classNames';
 import EventDetails from './EventDetails';
 import EventForm from './EventForm';
@@ -7,9 +7,10 @@ import { useEvents } from '../contexts/EventContext';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
 import { useFriends } from '../contexts/FriendsContext';
 import FriendsList from './FriendsList';
+import InviteModal from './InviteModal';
 
 const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategoryFilter }) => {
-  const { events, selectedEvent, selectEvent, handleToggleAttendance, isUserWaitlisted, eventCategories } = useEvents();
+  const { events, selectedEvent, selectEvent, handleToggleAttendance, isUserWaitlisted, eventCategories, handleAddEvent } = useEvents();
   const { friends, addFriend, viewFriendEvents, selectedFriend, getFriendEvents } = useFriends();
   const [activeTab, setActiveTab] = useState('discover');
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,6 +25,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
   const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
   const [eventToConfirm, setEventToConfirm] = useState(null);
   const [categoryEventCounts, setCategoryEventCounts] = useState({});
+  const [inviteModalEvent, setInviteModalEvent] = useState(null);
 
   // Categories with emojis
   const categories = eventCategories || [
@@ -81,18 +83,31 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
 
   const isEventInTimeline = (event) => {
     if (!timelineView || !selectedDate) return false;
-    const eventDate = new Date(event.date);
+    // Defensive: parse event.date as YYYY-MM-DD and selectedDate as Date
+    let eventDate;
+    if (typeof event.date === 'string' && event.date.length === 10) {
+      // Parse as YYYY-MM-DD
+      const [year, month, day] = event.date.split('-');
+      eventDate = new Date(Number(year), Number(month) - 1, Number(day));
+    } else {
+      eventDate = new Date(event.date);
+    }
     const selected = new Date(selectedDate);
-    
+
+    // Debug log
+    // Remove/comment this out after confirming fix
+    // console.log('Event:', event.title, 'eventDate:', eventDate, 'selected:', selected, 'timelineView:', timelineView);
+
     switch (timelineView) {
       case 'day':
         return eventDate.toDateString() === selected.toDateString();
-      case 'week':
+      case 'week': {
         const weekStart = new Date(selected);
         weekStart.setDate(selected.getDate() - selected.getDay());
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 6);
         return eventDate >= weekStart && eventDate <= weekEnd;
+      }
       case 'month':
         return eventDate.getMonth() === selected.getMonth() && 
                eventDate.getFullYear() === selected.getFullYear();
@@ -134,7 +149,21 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
     }
   };
 
-  // Enhanced getFilteredEvents to handle multiple categories
+  // Helper function to check if event is confirmed
+  function isEventConfirmed(event) {
+    const min = event.minAttendees || 0;
+    const current = event.attendees?.length || 0;
+    return current >= min;
+  }
+
+  // Compute waitlisted count for badge
+  const waitlistedCount = events.filter(
+    event =>
+      isUserWaitlisted(event.id) ||
+      (event.attendees.includes('current-user') && !isEventConfirmed(event))
+  ).length;
+
+  // Enhanced getFilteredEvents to handle confirmed/pending
   const getFilteredEvents = () => {
     let filtered = [...events];
 
@@ -148,12 +177,17 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
     // First filter based on active tab
     if (activeTab === 'your-events') {
       filtered = filtered.filter(event => 
-        event.attendees.includes('current-user') && !isUserWaitlisted(event.id)
+        event.attendees.includes('current-user') &&
+        !isUserWaitlisted(event.id) &&
+        isEventConfirmed(event)
       );
     } else if (activeTab === 'friends' && selectedFriend) {
       filtered = getFriendEvents(selectedFriend.id);
     } else if (activeTab === 'waitlisted') {
-      filtered = filtered.filter(event => isUserWaitlisted(event.id));
+      filtered = filtered.filter(event =>
+        isUserWaitlisted(event.id) ||
+        (event.attendees.includes('current-user') && !isEventConfirmed(event))
+      );
     } else if (activeTab === 'discover') {
       filtered = filtered.filter(event => 
         !event.attendees.includes('current-user') && !isUserWaitlisted(event.id)
@@ -296,25 +330,37 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
   const getAvailableSeats = (event) => event.maxAttendees - event.currentAttendees;
 
   const handleSelectEvent = (event, openInvite = false) => {
-    console.log('handleSelectEvent called with:', {
-      title: event?.title,
-      id: event?.id,
-      openInvite
+    console.log('EventSidebar: handleSelectEvent called:', {
+      eventTitle: event?.title,
+      openInvite: openInvite,
+      eventId: event?.id,
+      timestamp: new Date().toISOString()
     });
     
-    if (event) {
-      // First select the event
-      selectEvent(event);
-      // Then set the invite state if needed
-      setSelectedEventWithInvite(openInvite);
+    // First close any existing event details
+    if (selectedEvent && selectedEvent.id !== event.id) {
+      setSelectedEventWithInvite(false);
+      selectEvent(null);
     }
+    
+    // Update states in the correct order
+    setSelectedEventWithInvite(openInvite);
+    selectEvent(event);
+    
+    // Log the state update with full details
+    console.log('EventSidebar: States updated:', {
+      eventTitle: event?.title,
+      openInvite: openInvite,
+      eventId: event?.id,
+      timestamp: new Date().toISOString()
+    });
   };
 
   const handleCloseDetails = () => {
-    console.log('handleCloseDetails called');
+    console.log('EventSidebar: handleCloseDetails called');
     // Reset both states when closing
-    selectEvent(null);
     setSelectedEventWithInvite(false);
+    selectEvent(null);
   };
 
   const handleJoinClick = (event) => {
@@ -346,8 +392,9 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
   };
 
   const handleAddEventSubmit = (eventData) => {
-    // Handle adding a new event
+    handleAddEvent(eventData); // Add to global state
     setShowAddEventModal(false);
+    setActiveTab('discover'); // Switch to Discover tab
     showNotification(`Created new event: ${eventData.title}`, 'success');
   };
 
@@ -358,6 +405,64 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
       handleJoinClick(event);
     }
   };
+
+  // Add function to get live events
+  const getLiveEvents = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    return events.filter(event => {
+      const eventDate = new Date(event.date);
+      const eventEndTime = new Date(event.date);
+      eventEndTime.setHours(eventEndTime.getHours() + 2); // Assuming events last 2 hours
+      
+      // Check if event is today and currently happening
+      return eventDate >= today && 
+             eventDate < tomorrow && 
+             eventDate <= now && 
+             eventEndTime >= now;
+    }).sort((a, b) => {
+      // Sort by time remaining (events ending soonest first)
+      const aEnd = new Date(a.date).setHours(new Date(a.date).getHours() + 2);
+      const bEnd = new Date(b.date).setHours(new Date(b.date).getHours() + 2);
+      return aEnd - bEnd;
+    });
+  };
+
+  // Add function to calculate time remaining
+  const getTimeRemaining = (eventDate) => {
+    const endTime = new Date(eventDate);
+    endTime.setHours(endTime.getHours() + 2);
+    const now = new Date();
+    const diff = endTime - now;
+    const minutes = Math.floor(diff / 60000);
+    return minutes > 0 ? `${minutes}m left` : 'Ending soon';
+  };
+
+  // Add auto-scroll effect for live events
+  useEffect(() => {
+    const liveEvents = getLiveEvents();
+    if (liveEvents.length > 0) {
+      let currentIndex = 0;
+      const interval = setInterval(() => {
+        const liveSection = document.getElementById('live-events-section');
+        if (liveSection) {
+          const cards = liveSection.querySelectorAll('.live-event-card');
+          if (cards.length > 0) {
+            currentIndex = (currentIndex + 1) % cards.length;
+            cards[currentIndex].scrollIntoView({ 
+              behavior: 'smooth', 
+              block: 'nearest' 
+            });
+          }
+        }
+      }, 3000); // Scroll every 3 seconds
+
+      return () => clearInterval(interval);
+    }
+  }, [events]); // Re-run when events change
 
   return (
     <div className="flex flex-col h-full bg-white shadow-xl">
@@ -431,6 +536,11 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
             onClick={() => setActiveTab('waitlisted')}
           >
             Waitlisted
+            {waitlistedCount > 0 && (
+              <span className="ml-2 inline-block bg-yellow-500 text-white text-xs rounded-full px-2 py-0.5">
+                {waitlistedCount}
+              </span>
+            )}
           </button>
         </div>
 
@@ -515,7 +625,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
               </button>
             )}
           </div>
-          <div className="grid grid-cols-4 gap-2 max-h-[200px] overflow-y-auto pb-2 scrollbar-hide">
+          <div className="flex overflow-x-auto gap-2 pb-2 hide-scrollbar">
             {categories.map(category => {
               const count = categoryEventCounts[category.id] || 0;
               const isSelected = selectedCategories.includes(category.id);
@@ -525,7 +635,7 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                   key={category.id}
                   onClick={() => toggleCategory(category.id)}
                   className={classNames(
-                    'flex flex-col items-center p-3 rounded-lg transition-all duration-200',
+                    'flex items-center gap-2 shrink-0 px-3 py-2 rounded-lg transition-all duration-200',
                     isSelected
                       ? 'bg-blue-100 text-blue-800 ring-2 ring-blue-500'
                       : count > 0
@@ -534,11 +644,11 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                   )}
                   disabled={count === 0}
                 >
-                  <span className="text-2xl mb-1">{category.emoji}</span>
-                  <span className="text-xs text-center font-medium leading-tight">{category.name}</span>
+                  <span className="text-xl">{category.emoji}</span>
+                  <span className="text-sm font-medium whitespace-nowrap">{category.name}</span>
                   {count > 0 && (
                     <span className={classNames(
-                      'mt-1 px-2 py-0.5 text-xs rounded-full',
+                      'px-2 py-0.5 text-xs rounded-full',
                       isSelected
                         ? 'bg-blue-200 text-blue-800'
                         : 'bg-gray-200 text-gray-600'
@@ -565,6 +675,65 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
             />
           </div>
         </div>
+
+        {/* Live Events Section */}
+        {(() => {
+          const liveEvents = getLiveEvents();
+          if (liveEvents.length > 0) {
+            return (
+              <div className="px-4 py-2 border-b border-gray-100">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                    </span>
+                    <h3 className="text-sm font-medium text-gray-900">Live Now</h3>
+                    <span className="text-xs text-gray-500">({liveEvents.length})</span>
+                  </div>
+                </div>
+                <div 
+                  id="live-events-section"
+                  className="space-y-2 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100"
+                >
+                  {liveEvents.map(event => (
+                    <div
+                      key={event.id}
+                      className="live-event-card p-2 bg-red-50 rounded-lg border border-red-100 cursor-pointer hover:bg-red-100 transition-colors"
+                      onClick={() => handleSelectEvent(event)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {event.title}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {event.location}
+                          </p>
+                          <div className="flex items-center space-x-2 mt-1">
+                            <p className="text-xs text-red-600">
+                              {format(new Date(event.date), 'h:mm a')} - {format(new Date(event.date).setHours(new Date(event.date).getHours() + 2), 'h:mm a')}
+                            </p>
+                            <span className="text-xs font-medium text-red-600">
+                              {getTimeRemaining(event.date)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <span className="text-xs text-red-600">
+                            {event.currentAttendees} attending
+                          </span>
+                          <ChevronRightIcon className="h-4 w-4 text-gray-400" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
 
       {/* Events List with Category Filter Info */}
@@ -610,6 +779,9 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                       onSelect={handleSelectEvent}
                       onToggleAttendance={handleEventAction}
                       isWaitlisted={isUserWaitlisted(event.id)}
+                      selectedEvent={selectedEvent}
+                      onCloseDetails={handleCloseDetails}
+                      onInviteClick={setInviteModalEvent}
                     />
                   ))}
                 </div>
@@ -622,9 +794,6 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
             {timelineEvents.length > 0 && (
               <div className="p-4 border-b border-gray-100">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold">
-                    {format(new Date(selectedDate), timelineView === 'month' ? 'MMMM yyyy' : 'MMMM d, yyyy')}
-                  </h3>
                   <span className="text-sm text-gray-500">
                     {timelineEvents.length} event{timelineEvents.length !== 1 ? 's' : ''}
                   </span>
@@ -641,6 +810,9 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                       onSelect={handleSelectEvent}
                       onToggleAttendance={handleEventAction}
                       isWaitlisted={isUserWaitlisted(event.id)}
+                      selectedEvent={selectedEvent}
+                      onCloseDetails={handleCloseDetails}
+                      onInviteClick={setInviteModalEvent}
                     />
                   ))}
                 </div>
@@ -668,6 +840,9 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
                       onSelect={handleSelectEvent}
                       onToggleAttendance={handleEventAction}
                       isWaitlisted={isUserWaitlisted(event.id)}
+                      selectedEvent={selectedEvent}
+                      onCloseDetails={handleCloseDetails}
+                      onInviteClick={setInviteModalEvent}
                     />
                   ))}
                 </div>
@@ -701,11 +876,9 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
       {/* Event Details Overlay */}
       {selectedEvent && (
         <EventDetails
+          key={`${selectedEvent.id}-${selectedEventWithInvite}-details`}
           event={selectedEvent}
-          onClose={() => {
-            handleCloseDetails();
-            setSelectedEventWithInvite(false);
-          }}
+          onClose={handleCloseDetails}
           onJoinEvent={handleJoinClick}
           openInviteDirectly={selectedEventWithInvite}
         />
@@ -778,11 +951,60 @@ const EventSidebar = ({ timelineView, selectedDate, onTimelineChange, onCategory
           </div>
         </div>
       )}
+
+      {/* Invite Modal */}
+      {inviteModalEvent && (
+        <InviteModal
+          event={inviteModalEvent}
+          onClose={() => setInviteModalEvent(null)}
+        />
+      )}
+
+      {/* Event Media */}
+      {selectedEvent && (
+        <div className="p-4 border-b border-gray-100">
+          <h3 className="text-lg font-semibold mb-2">{selectedEvent.title}</h3>
+          <p className="text-gray-600 mb-4">{selectedEvent.description}</p>
+          {selectedEvent.media && selectedEvent.media.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-md font-medium text-gray-900 mb-2">Event Media</h4>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {selectedEvent.media.map((media, idx) => (
+                  <div key={idx} className="relative group">
+                    {media.type === 'image' ? (
+                      <img
+                        src={media.url}
+                        alt={`Event media ${idx + 1}`}
+                        className="w-full h-24 object-cover rounded-lg"
+                      />
+                    ) : (
+                      <video
+                        src={media.url}
+                        className="w-full h-24 object-cover rounded-lg"
+                        controls
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };
 
-const EventCard = ({ event, isSelected, onSelect, onToggleAttendance, isWaitlisted }) => {
+const EventCard = ({ 
+  event, 
+  isSelected, 
+  onSelect, 
+  onToggleAttendance, 
+  isWaitlisted,
+  selectedEvent,
+  onCloseDetails,
+  onInviteClick
+}) => {
   const { isUserAttending, canEditEvent } = useEvents();
   const { friends } = useFriends();
   const isAttending = isUserAttending(event.id);
@@ -794,107 +1016,107 @@ const EventCard = ({ event, isSelected, onSelect, onToggleAttendance, isWaitlist
   const maxAttendees = event.maxAttendees || 10;
   const spotsLeft = maxAttendees - currentAttendees;
   
-  // Get friend attendees (for development, ensure event.attendees exists)
+  // Get friend attendees
   const friendAttendees = (event.attendees || [])
     .filter(attendeeId => friends?.some(friend => friend.id === attendeeId))
     .map(attendeeId => friends?.find(friend => friend.id === attendeeId))
     .filter(Boolean);
 
-  const handleInviteClick = (e) => {
+  // Helper for pending status
+  const isPending = isAttending && (currentAttendees < (event.minAttendees || 0));
+
+  // Button text logic
+  const getButtonText = () => {
+    if (isWaitlisted || isPending) return 'Waitlisted';
+    if (isAttending) return 'Attending';
+    return 'Join';
+  };
+
+  // Button style logic
+  const getButtonStyle = () => {
+    if (isWaitlisted || isPending) return 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200';
+    if (isAttending) return 'bg-green-100 text-green-700 hover:bg-green-200';
+    return 'bg-blue-100 text-blue-700 hover:bg-blue-200';
+  };
+
+  const handleCardClick = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    console.log('Invite button clicked for event:', event.title);
-    onSelect(event, true);
+    console.log('EventCard: Card clicked:', {
+      title: event.title,
+      id: event.id,
+      timestamp: new Date().toISOString()
+    });
+    onSelect(event, false);
   };
 
   return (
     <div
-      className={`p-4 rounded-lg cursor-pointer transition-all duration-200 relative ${
-        isSelected ? 'bg-blue-50 border-2 border-blue-500' : 'bg-white border border-gray-200 hover:border-blue-300'
-      }`}
-      onClick={(e) => {
-        e.preventDefault();
-        onSelect(event, false);
-      }}
+      className={`relative bg-white rounded-2xl shadow-lg border border-gray-100 p-6 transition-transform hover:scale-[1.02] cursor-pointer overflow-hidden
+        ${isSelected ? 'ring-2 ring-blue-300' : ''}
+        ${isVIP ? 'ring-2 ring-purple-400 ring-offset-2' : ''}
+      `}
+      onClick={handleCardClick}
     >
+      {/* VIP Tag at Top Center with Gradient */}
+      {isVIP && (
+        <div className="flex justify-center mb-3">
+          <span className="bg-gradient-to-r from-purple-500 to-pink-500 text-white text-sm px-4 py-1 rounded-full font-semibold shadow tracking-wide">
+            VIP
+          </span>
+        </div>
+      )}
       <div className="flex flex-col">
-        <div className="flex items-start justify-between mb-3">
+        <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-2">
-            <h3 className="font-medium text-gray-900">{event.title}</h3>
-            {isVIP && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                VIP
-              </span>
-            )}
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">{event.emoji} {event.title}</h3>
           </div>
           <button
             onClick={(e) => {
               e.stopPropagation();
               onToggleAttendance(event);
             }}
-            className={`px-3 py-1 rounded-full text-sm font-medium ${
-              isAttending
-                ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                : isWaitlisted
-                ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-            }`}
+            className={`px-4 py-2 rounded-full text-sm font-semibold shadow transition ${getButtonStyle()}`}
           >
-            {isAttending ? 'Attending' : isWaitlisted ? 'Waitlisted' : 'Join'}
+            {getButtonText()}
           </button>
         </div>
-
-        <p className="text-sm text-gray-500 mb-3">{event.description}</p>
-          
-        {/* Event Details */}
-        <div className="space-y-2">
-          {/* Date and Time */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center text-sm text-gray-600">
-              <CalendarIcon className="w-4 h-4 mr-1.5" />
-              <span>{format(new Date(event.date), 'MMM d, yyyy')}</span>
-            </div>
-            <div className="flex items-center text-sm text-gray-600">
-              <ClockIcon className="w-4 h-4 mr-1.5" />
-              <span>{event.time || '7:00 PM'}</span>
-            </div>
-          </div>
-            
-          {/* Location */}
-          <div className="flex items-center text-sm text-gray-600">
-            <MapPinIcon className="w-4 h-4 mr-1.5" />
-            <span>{event.location || 'San Francisco, CA'}</span>
-          </div>
-
-          {/* Attendance Info */}
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center text-gray-600">
-              <UserGroupIcon className="w-4 h-4 mr-1.5" />
-              <span>{currentAttendees} attending</span>
-              {spotsLeft > 0 && (
-                <span className="ml-1 text-green-600">
-                  ({spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left)
-                </span>
-              )}
-            </div>
-            {friendAttendees.length > 0 && (
-              <div className="text-blue-600">
-                {friendAttendees[0]?.name} {friendAttendees.length > 1 ? `+ ${friendAttendees.length - 1} friends` : 'is going'}
-              </div>
-            )}
-          </div>
+        <p className="text-gray-600 mb-4 text-sm">{event.description}</p>
+        <div className="flex items-center gap-4 text-gray-500 text-sm mb-2">
+          <CalendarIcon className="w-5 h-5" />
+          {format(new Date(event.date), 'MMM d, yyyy')}
+          <ClockIcon className="w-5 h-5" />
+          {event.time || '7:00 PM'}
         </div>
+        <div className="flex items-center gap-2 text-gray-500 text-sm mb-2">
+          <MapPinIcon className="w-5 h-5" />
+          <span>{event.location || 'San Francisco, CA'}</span>
+        </div>
+        <div className="flex items-center gap-2 text-gray-500 text-sm">
+          <UserGroupIcon className="w-5 h-5" />
+          <span>{currentAttendees} attending</span>
+          {spotsLeft > 0 && (
+            <span className="ml-1 text-green-600">({spotsLeft} spot{spotsLeft !== 1 ? 's' : ''} left)</span>
+          )}
+        </div>
+        {friendAttendees.length > 0 && (
+          <div className="text-blue-600 mt-2 text-sm">
+            {friendAttendees[0]?.name} {friendAttendees.length > 1 ? `+ ${friendAttendees.length - 1} friends` : 'is going'}
+          </div>
+        )}
       </div>
-
-      {/* Invite Button - Positioned absolutely in bottom right */}
+      {/* Invite Button */}
       {canInvite && (
         <button
-          onClick={handleInviteClick}
-          className="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition-colors shadow-sm"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onInviteClick(event);
+          }}
+          className="absolute bottom-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-green-100 text-green-600 hover:bg-green-200 transition-colors shadow z-10"
           title="Invite friends"
           type="button"
         >
-          <UserPlusIcon className="w-4 h-4" />
+          <UserPlusIcon className="w-5 h-5" />
         </button>
       )}
     </div>

@@ -145,6 +145,29 @@ const MapView = ({ selectedCategories = [], onEventSelect, timelineView, selecte
         {/* Date selector */}
         <div className="flex items-center space-x-4 bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow-lg inline-block mx-auto">
           <button
+            onClick={() => {
+              const date = new Date(selectedDate);
+              switch (timelineView) {
+                case 'day':
+                  date.setDate(date.getDate() - 1);
+                  break;
+                case 'week':
+                  date.setDate(date.getDate() - 7);
+                  break;
+                case 'month':
+                  date.setMonth(date.getMonth() - 1);
+                  break;
+              }
+              onTimelineChange(timelineView, date);
+            }}
+            className="p-2 rounded-full hover:bg-gray-100 border border-gray-200 active:bg-gray-200 transition-colors"
+            aria-label="Previous"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
             onClick={() => onTimelineChange('day')}
             className={classNames(
               'px-3 py-1 rounded-md text-sm font-medium transition-colors',
@@ -180,6 +203,29 @@ const MapView = ({ selectedCategories = [], onEventSelect, timelineView, selecte
           <div className="text-sm font-medium text-gray-700 whitespace-nowrap">
             {getDateRangeText()}
           </div>
+          <button
+            onClick={() => {
+              const date = new Date(selectedDate);
+              switch (timelineView) {
+                case 'day':
+                  date.setDate(date.getDate() + 1);
+                  break;
+                case 'week':
+                  date.setDate(date.getDate() + 7);
+                  break;
+                case 'month':
+                  date.setMonth(date.getMonth() + 1);
+                  break;
+              }
+              onTimelineChange(timelineView, date);
+            }}
+            className="p-2 rounded-full hover:bg-gray-100 border border-gray-200 active:bg-gray-200 transition-colors"
+            aria-label="Next"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
 
         {/* Event count badge */}

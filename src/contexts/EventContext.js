@@ -402,6 +402,7 @@ export const EventProvider = ({ children }) => {
       return category.name;
     },
     findSimilarEvents,
+    handleEditEvent,
     handleMinimumCapacityCancellation: async (eventId) => {
       const event = events.find(e => e.id === eventId);
       if (!event) return;

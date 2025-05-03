@@ -2,11 +2,15 @@ import React, { useState } from 'react';
 import { useEvents } from '../contexts/EventContext';
 import { useAuth } from '../contexts/AuthContext';
 import { formatDate } from '../utils/dateUtils';
+import EventForm from './EventForm';
+import { Dialog } from '@headlessui/react';
 
 const MyEvents = () => {
-  const { events, loading, error } = useEvents();
+  const { events, loading, error, handleEditEvent } = useEvents();
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   // Filter events to show only those created by the current user
   const myEvents = events.filter(event => event.hostId === user?.id);
@@ -27,6 +31,22 @@ const MyEvents = () => {
       default:
         return 'bg-gray-50 text-gray-700 px-2 py-1 rounded-full text-xs';
     }
+  };
+
+  const handleEditClick = (event) => {
+    setEditingEvent(event);
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = (updatedEvent) => {
+    handleEditEvent(editingEvent.id, updatedEvent);
+    setShowEditModal(false);
+    setEditingEvent(null);
+  };
+
+  const handleEditCancel = () => {
+    setShowEditModal(false);
+    setEditingEvent(null);
   };
 
   if (loading) {
@@ -115,6 +135,7 @@ const MyEvents = () => {
                     <th className="text-left text-xs font-medium text-gray-500 uppercase py-3">Status</th>
                     <th className="text-left text-xs font-medium text-gray-500 uppercase py-3">Attendees</th>
                     <th className="text-left text-xs font-medium text-gray-500 uppercase py-3">Capacity</th>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase py-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -130,6 +151,14 @@ const MyEvents = () => {
                       </td>
                       <td className="py-4 text-sm text-gray-500">{event.attendees?.length || 0}</td>
                       <td className="py-4 text-sm text-gray-500">{event.capacity}</td>
+                      <td className="py-4 text-sm">
+                        <button
+                          className="px-3 py-1 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium transition"
+                          onClick={() => handleEditClick(event)}
+                        >
+                          Edit
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -137,6 +166,21 @@ const MyEvents = () => {
             </div>
           </div>
         </div>
+        {/* Edit Modal */}
+        <Dialog open={showEditModal} onClose={handleEditCancel} className="fixed z-50 inset-0 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4">
+            {/* Overlay */}
+            <div className="fixed inset-0 bg-black bg-opacity-30 transition-opacity" aria-hidden="true" />
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-auto p-8 relative z-10">
+              <h2 className="text-xl font-semibold mb-4">Edit Event</h2>
+              <EventForm
+                initialData={editingEvent}
+                onSubmit={handleEditSubmit}
+                onCancel={handleEditCancel}
+              />
+            </div>
+          </div>
+        </Dialog>
       </div>
     </div>
   );

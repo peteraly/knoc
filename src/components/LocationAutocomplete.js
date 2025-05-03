@@ -115,7 +115,7 @@ const LocationAutocomplete = ({ value, onChange, onCoordinatesChange, onNeighbor
       const response = await fetch(
         `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query + ' San Francisco')}.json?` +
         `access_token=${process.env.REACT_APP_MAPBOX_TOKEN}&` +
-        'bbox=-122.517,37.707,-122.355,37.833' // SF bounding box
+        'bbox=-122.517,37.707,-122.355,37.833&types=poi,address,place'
       );
       
       const data = await response.json();

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CalendarIcon, ClockIcon, MapPinIcon, UserGroupIcon, UserPlusIcon, XMarkIcon, EnvelopeIcon, PhoneIcon, PhotoIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { useEvents } from '../contexts/EventContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useFriends } from '../contexts/FriendContext';
 
 // Sample data for testing
 const sampleAttendees = [
@@ -42,6 +43,7 @@ const eventCategories = [
 const EventCard = ({ event, onClick }) => {
   const { isUserAttending, isUserWaitlisted, handleInviteUser } = useEvents();
   const { user, userNetwork = [] } = useAuth();
+  const { friends } = useFriends();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteMethod, setInviteMethod] = useState('network');
   const [inviteInput, setInviteInput] = useState('');
@@ -50,6 +52,16 @@ const EventCard = ({ event, onClick }) => {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [showCategoryFilter, setShowCategoryFilter] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState([]);
+
+  // VIP logic
+  const isVIP = event.isVIP || event.category === 'vip' || event.eventType === 'vip';
+  const isAttending = isUserAttending(event.id);
+  const currentAttendees = event.attendees?.length || 0;
+  const minAttendees = event.minAttendees || 0;
+  const isPending = isAttending && currentAttendees < minAttendees;
+
+  // Calculate attendance info
+  const isPending = isAttending && currentAttendees < minAttendees;
 
   // Calculate if we should show the invite button
   const shouldShowInviteButton = () => {
@@ -140,8 +152,25 @@ const EventCard = ({ event, onClick }) => {
     <>
       <div 
         onClick={onClick}
-        className="relative bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer overflow-hidden"
+        className={`relative bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer overflow-hidden ${
+          isPending ? 'border-2 border-yellow-200' : ''
+        } ${isVIP ? 'ring-2 ring-purple-400 ring-offset-2' : ''}`}
       >
+        {/* VIP Flag */}
+        {isVIP && (
+          <div className="absolute -top-2 -left-2 z-20">
+            <span className="bg-purple-600 text-white text-xs px-2 py-0.5 rounded shadow-lg rotate-[-10deg]">
+              VIP
+            </span>
+          </div>
+        )}
+        {/* Pending Banner */}
+        {isPending && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-3 py-2 rounded mb-2 flex items-center">
+            <ClockIcon className="w-5 h-5 mr-2" />
+            This event is waiting for more people to be confirmed.
+          </div>
+        )}
         {/* Mobile-optimized flex container */}
         <div className="flex flex-col md:flex-row">
           {/* Photo Gallery Section - Full width on mobile */}

@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import LocationAutocomplete from './LocationAutocomplete';
 import { useEvents } from '../contexts/EventContext';
-import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon, ChevronUpIcon, PhotoIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { v4 as uuidv4 } from 'uuid';
+import { storage } from '../utils/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const EventForm = ({ onSubmit, onCancel, initialData }) => {
   const { eventCategories, getCategoryEmoji } = useEvents();
@@ -80,6 +83,10 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
   const [requiredHosts, setRequiredHosts] = useState(initialData?.requiredHosts || 1);
   const [hostingStyle, setHostingStyle] = useState(initialData?.hostingStyle || 'single');
 
+  const [mediaFiles, setMediaFiles] = useState([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState({});
+
   // Update emoji when category or subcategory changes
   useEffect(() => {
     if (category && subcategory) {
@@ -91,7 +98,7 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
     }
   }, [category, subcategory, getCategoryEmoji]);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!coordinates) {
       alert('Please select a location from the suggestions');
@@ -102,6 +109,15 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
       return;
     }
     
+    // 1. Upload media files to Firebase Storage
+    const uploadedMediaUrls = [];
+    for (const media of mediaFiles) {
+      const storageRef = ref(storage, `events/${uuidv4()}-${media.file.name}`);
+      await uploadBytes(storageRef, media.file);
+      const url = await getDownloadURL(storageRef);
+      uploadedMediaUrls.push({ type: media.type, url });
+    }
+
     // Build the event data object
     const eventData = {
       title,
@@ -150,7 +166,9 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
         vip: vipPerks
       },
       requiredHosts,
-      hostingStyle
+      hostingStyle,
+      attendees: ['current-user'],
+      media: uploadedMediaUrls,
     };
     
     onSubmit(eventData);
@@ -190,7 +208,7 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
     { id: 'mission', name: 'Mission District', emoji: '🎨' },
     { id: 'haight', name: 'Haight-Ashbury', emoji: '🌺' },
     { id: 'castro', name: 'Castro', emoji: '🌈' },
-    { id: 'soma', name: 'SoMa', emoji: '🏢' },
+    { id: 'soma', name: 'SoMa', emoji: '��' },
     { id: 'marina', name: 'Marina', emoji: '⛵' },
     { id: 'richmond', name: 'Richmond', emoji: '🌊' },
     { id: 'sunset', name: 'Sunset', emoji: '🌅' },
@@ -199,288 +217,127 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
     { id: 'other', name: 'Other Areas', emoji: '📌' }
   ];
 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    handleFiles(files);
+  };
+
+  const handleFileInput = (e) => {
+    const files = Array.from(e.target.files);
+    handleFiles(files);
+  };
+
+  const handleFiles = (files) => {
+    const validFiles = files.filter(file => {
+      const isImage = file.type.startsWith('image/');
+      const isVideo = file.type.startsWith('video/');
+      return isImage || isVideo;
+    });
+    const newFiles = validFiles.map(file => ({
+      id: uuidv4(),
+      file,
+      type: file.type.startsWith('image/') ? 'image' : 'video',
+      preview: URL.createObjectURL(file),
+      uploadProgress: 0
+    }));
+    setMediaFiles(prev => [...prev, ...newFiles]);
+    // Simulate upload progress
+    newFiles.forEach(file => {
+      let progress = 0;
+      const interval = setInterval(() => {
+        progress += 10;
+        setUploadProgress(prev => ({
+          ...prev,
+          [file.id]: progress
+        }));
+        if (progress >= 100) {
+          clearInterval(interval);
+        }
+      }, 200);
+    });
+  };
+
+  const removeMedia = (id) => {
+    setMediaFiles(prev => prev.filter(file => file.id !== id));
+    setUploadProgress(prev => {
+      const newProgress = { ...prev };
+      delete newProgress[id];
+      return newProgress;
+    });
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
-      {/* Basic Info Section */}
-      <div className="bg-white rounded-lg shadow">
-        <button
-          type="button"
-          className="w-full px-6 py-4 flex justify-between items-center text-left border-b border-gray-200"
-          onClick={() => toggleSection('basicInfo')}
-        >
-          <h3 className="text-xl font-medium text-gray-900">Basic Information</h3>
-          {openSections.basicInfo ? (
-            <ChevronUpIcon className="h-6 w-6 text-gray-500" />
-          ) : (
-            <ChevronDownIcon className="h-6 w-6 text-gray-500" />
-          )}
-        </button>
-        
-        {openSections.basicInfo && (
-          <div className="p-6">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700">Title</label>
-                <input
-                  type="text"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Event title"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700">Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  required
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows="3"
-                  placeholder="Event description"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Date</label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  required
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Time</label>
-                <input
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  required
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700">Location</label>
+      {/* Basic Info Section: Always Open, Required Fields */}
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold mb-2">Basic Info</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Event Title *" required className="input" />
+          <input value={date} onChange={e => setDate(e.target.value)} type="date" required className="input" />
+          <input value={time} onChange={e => setTime(e.target.value)} type="time" required className="input" />
                 <LocationAutocomplete
                   value={location}
                   onChange={setLocation}
                   onCoordinatesChange={setCoordinates}
                   onNeighborhoodChange={setNeighborhood}
                   required
+            className="input"
                 />
-              </div>
-            </div>
+          <select value={category} onChange={e => setCategory(e.target.value)} required className="input">
+            {eventCategories.map(cat => (
+              <option key={cat.id} value={cat.id}>{cat.emoji} {cat.name}</option>
+            ))}
+          </select>
+          <input value={minAttendees} onChange={e => setMinAttendees(e.target.value)} type="number" min={1} required placeholder="Min Attendees *" className="input" />
+          <input value={maxAttendees} onChange={e => setMaxAttendees(e.target.value)} type="number" min={1} required placeholder="Max Attendees *" className="input" />
           </div>
-        )}
       </div>
 
-      {/* Event Details Section */}
-      <div className="bg-white rounded-lg shadow">
-        <button
-          type="button"
-          className="w-full px-6 py-4 flex justify-between items-center text-left border-b border-gray-200"
-          onClick={() => toggleSection('details')}
-        >
-          <h3 className="text-xl font-medium text-gray-900">Event Details</h3>
-          {openSections.details ? (
-            <ChevronUpIcon className="h-6 w-6 text-gray-500" />
-          ) : (
-            <ChevronDownIcon className="h-6 w-6 text-gray-500" />
-          )}
+      {/* Collapsible: More Details */}
+      <div className="mb-4">
+        <button type="button" onClick={() => toggleSection('details')} className="font-semibold flex items-center">
+          More Details {openSections.details ? <ChevronUpIcon className="w-4 h-4 ml-1" /> : <ChevronDownIcon className="w-4 h-4 ml-1" />}
         </button>
-
         {openSections.details && (
-          <div className="p-6">
-            <div className="grid grid-cols-3 gap-x-8 gap-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Category</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {eventCategories.map(cat => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.emoji} {cat.name}
-                    </option>
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Description" className="input" />
+            <select value={subcategory} onChange={e => setSubcategory(e.target.value)} className="input">
+              <option value="">Select Subcategory</option>
+              {getSubcategories().map(sub => (
+                <option key={sub.id} value={sub.id}>{sub.emoji} {sub.name}</option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Subcategory</label>
-                <select
-                  value={subcategory}
-                  onChange={(e) => setSubcategory(e.target.value)}
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Select subcategory</option>
-                  {getSubcategories().map(sub => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.emoji} {sub.name}
-                    </option>
+            <input value={emoji} onChange={e => setEmoji(e.target.value)} placeholder="Emoji" className="input" />
+            <select value={neighborhood} onChange={e => setNeighborhood(e.target.value)} className="input">
+              <option value="">Select Neighborhood</option>
+              {neighborhoods.map(n => (
+                <option key={n.id} value={n.id}>{n.emoji} {n.name}</option>
                   ))}
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Hosting Style</label>
-                <select
-                  value={hostingStyle}
-                  onChange={(e) => setHostingStyle(e.target.value)}
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="single">Single Host</option>
-                  <option value="multi">Multiple Hosts</option>
-                  <option value="collaborative">Collaborative Hosting</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Min Attendees</label>
-                <input
-                  type="number"
-                  value={minAttendees}
-                  onChange={(e) => setMinAttendees(Math.max(1, parseInt(e.target.value)))}
-                  min="1"
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Max Attendees</label>
-                <input
-                  type="number"
-                  value={maxAttendees}
-                  onChange={(e) => setMaxAttendees(Math.max(minAttendees, parseInt(e.target.value)))}
-                  min={minAttendees}
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Required Hosts</label>
-                <input
-                  type="number"
-                  value={requiredHosts}
-                  onChange={(e) => setRequiredHosts(Math.max(1, parseInt(e.target.value)))}
-                  min="1"
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Deadlines Section */}
-              <div className="mt-6">
-                <h4 className="text-sm font-medium text-gray-900 mb-4">Deadlines</h4>
-                <div className="space-y-4">
-                  {/* Registration Deadline */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-gray-700">Registration Deadline</label>
-                      <button
-                        type="button"
-                        onClick={() => setHasRegistrationDeadline(!hasRegistrationDeadline)}
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          hasRegistrationDeadline
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {hasRegistrationDeadline ? 'Set' : 'None'}
-                      </button>
-                    </div>
-                    {hasRegistrationDeadline && (
-                      <input
-                        type="datetime-local"
-                        value={registrationDeadline}
-                        onChange={(e) => setRegistrationDeadline(e.target.value)}
-                        className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    )}
-                  </div>
-
-                  {/* Cancellation Deadline */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-gray-700">Cancellation Deadline</label>
-                      <button
-                        type="button"
-                        onClick={() => setHasCancellationDeadline(!hasCancellationDeadline)}
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          hasCancellationDeadline
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {hasCancellationDeadline ? 'Set' : 'None'}
-                      </button>
-                    </div>
-                    {hasCancellationDeadline && (
-                      <input
-                        type="datetime-local"
-                        value={cancellationDeadline}
-                        onChange={(e) => setCancellationDeadline(e.target.value)}
-                        className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    )}
-                  </div>
-
-                  {/* Confirmation Deadline */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-gray-700">Confirmation Deadline</label>
-                      <button
-                        type="button"
-                        onClick={() => setHasConfirmationDeadline(!hasConfirmationDeadline)}
-                        className={`px-3 py-1 rounded-full text-xs font-medium ${
-                          hasConfirmationDeadline
-                            ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}
-                      >
-                        {hasConfirmationDeadline ? 'Set' : 'None'}
-                      </button>
-                    </div>
-                    {hasConfirmationDeadline && (
-                      <input
-                        type="datetime-local"
-                        value={confirmationDeadline}
-                        onChange={(e) => setConfirmationDeadline(e.target.value)}
-                        className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <input value={groupMaxSize} onChange={e => setGroupMaxSize(e.target.value)} type="number" min={1} placeholder="Group Max Size" className="input" />
           </div>
         )}
       </div>
 
-      {/* Access Control Section */}
-      <div className="bg-white rounded-lg shadow">
-        <button
-          type="button"
-          className="w-full px-6 py-4 flex justify-between items-center text-left border-b border-gray-200"
-          onClick={() => toggleSection('accessControl')}
-        >
-          <h3 className="text-xl font-medium text-gray-900">Access Control</h3>
-          {openSections.accessControl ? (
-            <ChevronUpIcon className="h-6 w-6 text-gray-500" />
-          ) : (
-            <ChevronDownIcon className="h-6 w-6 text-gray-500" />
-          )}
+      {/* Collapsible: VIP & Access Control */}
+      <div className="mb-4">
+        <button type="button" onClick={() => toggleSection('accessControl')} className="font-semibold flex items-center">
+          VIP & Access Control {openSections.accessControl ? <ChevronUpIcon className="w-4 h-4 ml-1" /> : <ChevronDownIcon className="w-4 h-4 ml-1" />}
         </button>
-
         {openSections.accessControl && (
-          <div className="p-6">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Access Type</label>
                 <select
@@ -519,29 +376,17 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
                   </div>
                 </div>
               )}
-            </div>
           </div>
         )}
       </div>
 
-      {/* Pricing Section */}
-      <div className="bg-white rounded-lg shadow">
-        <button
-          type="button"
-          className="w-full px-6 py-4 flex justify-between items-center text-left border-b border-gray-200"
-          onClick={() => toggleSection('pricing')}
-        >
-          <h3 className="text-xl font-medium text-gray-900">Pricing</h3>
-          {openSections.pricing ? (
-            <ChevronUpIcon className="h-6 w-6 text-gray-500" />
-          ) : (
-            <ChevronDownIcon className="h-6 w-6 text-gray-500" />
-          )}
+      {/* Collapsible: Pricing */}
+      <div className="mb-4">
+        <button type="button" onClick={() => toggleSection('pricing')} className="font-semibold flex items-center">
+          Pricing {openSections.pricing ? <ChevronUpIcon className="w-4 h-4 ml-1" /> : <ChevronDownIcon className="w-4 h-4 ml-1" />}
         </button>
-
         {openSections.pricing && (
-          <div className="p-6">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Standard Price</label>
                 <input
@@ -564,54 +409,18 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
                   step="0.01"
                   className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Early Bird Price</label>
-                <input
-                  type="number"
-                  value={earlyBirdPrice}
-                  onChange={(e) => setEarlyBirdPrice(e.target.value)}
-                  min="0"
-                  step="0.01"
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Early Bird Deadline</label>
-                <input
-                  type="datetime-local"
-                  value={earlyBirdDeadline}
-                  onChange={(e) => setEarlyBirdDeadline(e.target.value)}
-                  className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Perks Section */}
-      <div className="bg-white rounded-lg shadow">
-        <button
-          type="button"
-          className="w-full px-6 py-4 flex justify-between items-center text-left border-b border-gray-200"
-          onClick={() => toggleSection('perks')}
-        >
-          <h3 className="text-xl font-medium text-gray-900">Perks</h3>
-          {openSections.perks ? (
-            <ChevronUpIcon className="h-6 w-6 text-gray-500" />
-          ) : (
-            <ChevronDownIcon className="h-6 w-6 text-gray-500" />
-          )}
+      {/* Collapsible: Perks & Partner Info */}
+      <div className="mb-4">
+        <button type="button" onClick={() => toggleSection('perks')} className="font-semibold flex items-center">
+          Perks & Partner Info {openSections.perks ? <ChevronUpIcon className="w-4 h-4 ml-1" /> : <ChevronDownIcon className="w-4 h-4 ml-1" />}
         </button>
-
         {openSections.perks && (
-          <div className="p-6">
-            <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Standard Perks</label>
                 <div className="mt-1 space-y-2">
@@ -681,27 +490,91 @@ const EventForm = ({ onSubmit, onCancel, initialData }) => {
                       </li>
                     ))}
                   </ul>
-                </div>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      <div className="flex justify-end space-x-4 sticky bottom-0 bg-white py-4 px-6 border-t border-gray-200 mt-8">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-6 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+      {/* Media Upload Section */}
+      <div className="mt-6">
+        <h3 className="text-lg font-medium text-gray-900">Event Media</h3>
+        <div
+          className={`mt-2 border-2 border-dashed rounded-lg p-6 ${
+            isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+          }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
         >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-        >
-          Save Event
-        </button>
+          <div className="text-center">
+            <PhotoIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <div className="mt-4 flex text-sm leading-6 text-gray-600">
+              <label
+                htmlFor="file-upload"
+                className="relative cursor-pointer rounded-md bg-white font-semibold text-blue-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-600 focus-within:ring-offset-2 hover:text-blue-500"
+              >
+                <span>Upload files</span>
+                <input
+                  id="file-upload"
+                  name="file-upload"
+                  type="file"
+                  className="sr-only"
+                  multiple
+                  accept="image/*,video/*"
+                  onChange={handleFileInput}
+                />
+              </label>
+              <p className="pl-1">or drag and drop</p>
+            </div>
+            <p className="text-xs leading-5 text-gray-600">
+              PNG, JPG, GIF up to 10MB, MP4 up to 100MB
+            </p>
+          </div>
+        </div>
+        {/* Media Preview Grid */}
+        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+          {mediaFiles.map((media) => (
+            <div key={media.id} className="relative group">
+              {media.type === 'image' ? (
+                <img
+                  src={media.preview}
+                  alt="Preview"
+                  className="w-full h-32 object-cover rounded-lg"
+                />
+              ) : (
+                <video
+                  src={media.preview}
+                  className="w-full h-32 object-cover rounded-lg"
+                  controls
+                />
+              )}
+              <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => removeMedia(media.id)}
+                  className="absolute top-2 right-2 p-1 bg-red-500 rounded-full text-white"
+                >
+                  <XMarkIcon className="h-4 w-4" />
+                </button>
+                {uploadProgress[media.id] < 100 && (
+                  <div className="absolute bottom-2 left-2 right-2 bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-blue-500 h-2 rounded-full"
+                      style={{ width: `${uploadProgress[media.id]}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Submit/Cancel Buttons */}
+      <div className="flex justify-end gap-2 mt-6">
+        <button type="button" onClick={onCancel} className="px-4 py-2 rounded bg-gray-100 hover:bg-gray-200 text-gray-700">Cancel</button>
+        <button type="submit" className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold">Create Event</button>
       </div>
     </form>
   );
